@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   publish-source:
-    if: ${{ hashFiles('.bootstrap/vps-init-v1.1.0-source.tar.gz') != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout bootstrap commit
