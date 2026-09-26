@@ -1,0 +1,17 @@
+name: Self Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run VPS Init self-test
+        run: bash verify/selftest.sh
