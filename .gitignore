@@ -1,0 +1,10 @@
+config.env
+*.local.env
+*.zip
+*.tar.gz
+SHA256SUMS
+dist/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store

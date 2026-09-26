@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SELF_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+ROOT_DIR="$(cd "$(dirname "$SELF_PATH")" && pwd)"
+
+# shellcheck source=lib/common.sh
+source "$ROOT_DIR/lib/common.sh"
+source "$ROOT_DIR/lib/backup.sh"
+source "$ROOT_DIR/lib/validate.sh"
+source "$ROOT_DIR/lib/service.sh"
+source "$ROOT_DIR/lib/wizard.sh"
+source "$ROOT_DIR/core/preflight.sh"
+source "$ROOT_DIR/core/system.sh"
+source "$ROOT_DIR/core/swap.sh"
+source "$ROOT_DIR/core/network.sh"
+source "$ROOT_DIR/core/ssh.sh"
+source "$ROOT_DIR/core/firewall.sh"
+source "$ROOT_DIR/core/fail2ban.sh"
+source "$ROOT_DIR/modules/cloudflare/apply.sh"
+source "$ROOT_DIR/modules/certbot/apply.sh"
+source "$ROOT_DIR/modules/3x-ui/apply.sh"
+source "$ROOT_DIR/modules/subscription/apply.sh"
+source "$ROOT_DIR/modules/reality/apply.sh"
+source "$ROOT_DIR/modules/nginx/apply.sh"
+source "$ROOT_DIR/modules/lucky/apply.sh"
+source "$ROOT_DIR/optional/docker/apply.sh"
+source "$ROOT_DIR/optional/cf-ws/apply.sh"
+source "$ROOT_DIR/optional/cf-preferred/apply.sh"
+source "$ROOT_DIR/optional/cloudflaresub/apply.sh"
+source "$ROOT_DIR/verify/verify.sh"
+
+VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION" 2>/dev/null || printf unknown)"
+DEFAULT_CFG="$PERSIST_DIR/config.env"
+[[ -f "$DEFAULT_CFG" ]] || DEFAULT_CFG="$ROOT_DIR/config.env"
+
+usage() {
+  cat <<TXT
+VPS Init ${VERSION}
+用途：用于 VPS 自动化初始化、配置与验收。
+
+用法：
+  vps-init                    # 打开中文交互菜单
+  vps-init wizard             # 首次/重新生成配置并部署
+  vps-init apply [config.env] # 按配置部署/继续部署
+  vps-init verify [config.env]
+  vps-init preflight [config.env]
+  vps-init status [config.env]
+  vps-init secrets
+  vps-init update
+  vps-init logs
+TXT
+}
+
+load_runtime_config() {
+  local cfg="$1"
+  [[ -f "$cfg" ]] || die "未找到配置：$cfg。请先运行 vps-init wizard。"
+  load_config "$cfg"
+  validate_config
+  REQUESTED_PROFILE="$PROFILE"
+  state_load
+  PROFILE="$REQUESTED_PROFILE"
+  resolve_auto_settings
+  if [[ -n "${DEPLOYED_PROFILE:-}" && "$DEPLOYED_PROFILE" != "$PROFILE" ]]; then
+    die "该 VPS 已由 vps-init 以 Profile=${DEPLOYED_PROFILE} 部署。当前不自动跨 Profile 迁移。"
+  fi
+}
+
+show_status_summary() {
+  local cfg="$1"
+  load_runtime_config "$cfg"
+  echo "VPS Init ${VERSION}"
+  echo "Profile           : $PROFILE"
+  echo "Server            : ${SERVER_NAME:-}"
+  echo "IPv4              : ${SERVER_IP:-未部署/未知}"
+  echo "SSH Port          : $SSH_PORT"
+  if profile_has_xui; then
+    echo "3x-ui Panel Path  : ${XUI_WEB_BASE_PATH:-${XUI_PANEL_URI_PATH:-/zhg/}}"
+    echo "Subscription Path : ${SUBSCRIPTION_PATH:-${XUI_SUB_URI_PATH:-/zhg/}}"
+    echo "Subscription Port : ${SUBSCRIPTION_PORT_SELECTED:-$SUBSCRIPTION_PORT}"
+    echo "Reality Target    : ${REALITY_TARGET_SELECTED:-${REALITY_TARGET_MODE}}"
+  fi
+  [[ -f "$REPORT_FILE" ]] && echo "Report            : $REPORT_FILE"
+  [[ -f "$SECRETS_FILE" ]] && echo "Secrets           : $SECRETS_FILE (600)"
+}
+
+show_logs() {
+  state_load
+  echo "===== x-ui ====="
+  systemctl status x-ui --no-pager 2>/dev/null || true
+  journalctl -u x-ui -n 80 --no-pager 2>/dev/null || true
+  if [[ "${DEPLOYED_PROFILE:-}" == "nginx-reality" ]]; then
+    echo "===== nginx ====="
+    systemctl status nginx --no-pager 2>/dev/null || true
+    journalctl -u nginx -n 80 --no-pager 2>/dev/null || true
+  fi
+  if [[ "${DEPLOYED_PROFILE:-}" == "lucky-reality" ]]; then
+    echo "===== lucky ====="
+    systemctl status lucky --no-pager 2>/dev/null || true
+    journalctl -u lucky -n 80 --no-pager 2>/dev/null || true
+  fi
+  echo "===== fail2ban ====="
+  systemctl status fail2ban --no-pager 2>/dev/null || true
+}
+
+update_self() {
+  local source_file="$PERSIST_DIR/.source.env" repo ref url
+  [[ -r "$source_file" ]] || die "未记录 GitHub 来源。请重新运行项目 README 中的一键安装命令。"
+  # shellcheck disable=SC1090
+  source "$source_file"
+  repo="${VPSINIT_REPO:-}"; ref="${VPSINIT_BOOTSTRAP_REF:-main}"
+  [[ -n "$repo" && "$repo" == */* ]] || die "GitHub 仓库来源尚未配置。"
+  url="https://raw.githubusercontent.com/${repo}/${ref}/install.sh"
+  log_info "从 GitHub 更新 VPS Init：${repo}@${ref}"
+  curl -fsSL "$url" -o /tmp/vps-init-install.sh
+  chmod 700 /tmp/vps-init-install.sh
+  VPSINIT_REPO="$repo" VPSINIT_BOOTSTRAP_REF="$ref" bash /tmp/vps-init-install.sh --update --no-menu
+  rm -f /tmp/vps-init-install.sh
+  log_ok "更新完成。重新执行：vps-init"
+}
+
+menu() {
+  require_root
+  [[ -t 0 ]] || die "交互菜单需要 TTY。"
+  while true; do
+    clear 2>/dev/null || true
+    wizard_banner
+    echo
+    [[ -f "$DEFAULT_CFG" ]] && { state_load; echo "当前 Profile：${DEPLOYED_PROFILE:-未部署}"; echo; }
+    cat <<'TXT'
+  1. 一键部署 / 继续部署
+  2. 运行验收
+  3. 查看当前状态
+  4. 查看敏感凭据
+  5. 编辑配置
+  6. 更新 VPS Init
+  7. 查看服务日志
+  8. 重新运行安装向导
+  0. 退出
+TXT
+    local n
+    read -r -p "请选择 [0-8]: " n
+    case "$n" in
+      1)
+        if [[ -f "$DEFAULT_CFG" ]]; then "$ROOT_DIR/vps-init" apply "$DEFAULT_CFG" || true; else "$ROOT_DIR/vps-init" wizard || true; fi
+        ;;
+      2) "$ROOT_DIR/vps-init" verify "$DEFAULT_CFG" || true ;;
+      3) show_status_summary "$DEFAULT_CFG" || true ;;
+      4)
+        if [[ -f "$SECRETS_FILE" ]]; then
+          echo "警告：下面包含密码、API Token/节点参数等敏感信息。"
+          if wizard_yesno "确认显示？" n; then cat "$SECRETS_FILE"; fi
+        else echo "尚未生成凭据文件。"; fi
+        ;;
+      5)
+        [[ -f "$DEFAULT_CFG" ]] || { echo "尚无配置，先运行安装向导。"; "$ROOT_DIR/vps-init" wizard; continue; }
+        "${EDITOR:-vi}" "$DEFAULT_CFG"
+        ;;
+      6) update_self || true ;;
+      7) show_logs || true ;;
+      8) "$ROOT_DIR/vps-init" wizard || true ;;
+      0) exit 0 ;;
+      *) echo "输入无效。" ;;
+    esac
+    echo
+    read -r -p "按 Enter 返回菜单..." _
+  done
+}
+
+cmd="${1:-menu}"
+cfg="${2:-$DEFAULT_CFG}"
+case "$cmd" in
+  menu) menu; exit 0 ;;
+  wizard|install) require_root; wizard_run "$PERSIST_DIR/config.env"; exit $? ;;
+  secrets) require_root; [[ -f "$SECRETS_FILE" ]] || die "尚未生成 $SECRETS_FILE"; cat "$SECRETS_FILE"; exit 0 ;;
+  logs) require_root; show_logs; exit 0 ;;
+  update) require_root; update_self; exit 0 ;;
+  status) require_root; show_status_summary "$cfg"; exit 0 ;;
+  apply|verify|preflight) ;;
+  -h|--help|help) usage; exit 0 ;;
+  *) usage; die "未知命令: $cmd" ;;
+esac
+
+require_root
+load_runtime_config "$cfg"
+
+if [[ "$cmd" == preflight ]]; then core_preflight; exit 0; fi
+if [[ "$cmd" == verify ]]; then verify_all; exit $?; fi
+
+log_info "开始部署 Profile: $PROFILE"
+core_preflight
+# SSH key is handled before package upgrades or other system mutations. If the
+# public key is missing, the run stops here after printing copyable PowerShell.
+core_ssh
+core_system
+resolve_runtime_ports
+persist_config "$cfg"
+core_swap
+core_network
+core_firewall
+core_fail2ban
+optional_docker
+optional_cf_ws
+optional_cf_preferred
+optional_cloudflaresub
+
+if profile_has_xui; then
+  module_xui
+  if profile_has_domain; then
+    module_cloudflare
+    module_certbot_domain
+  fi
+  module_subscription
+  module_reality
+  case "$PROFILE" in
+    nginx-reality) module_nginx ;;
+    lucky-reality) module_lucky ;;
+  esac
+fi
+
+copy_project_persistent
+persist_config "$cfg"
+
+echo >> "$SECRETS_FILE" 2>/dev/null || true
+chmod 600 "$SECRETS_FILE" 2>/dev/null || true
+
+if verify_all; then
+  log_ok "全部阶段完成。"
+else
+  die "部署完成但验收存在失败项，请查看 $REPORT_FILE。"
+fi
+
+if [[ -f /var/run/reboot-required ]]; then
+  log_warn "系统提示需要重启。建议执行 reboot，重新登录后运行：vps-init verify"
+else
+  log_info "可选的冷启动验收：reboot 后运行 vps-init verify"
+fi
+log_info "敏感凭据（root-only）：$SECRETS_FILE"
+log_info "验收报告（不含密码/Token/私钥）：$REPORT_FILE"
