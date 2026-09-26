@@ -8,7 +8,16 @@
 bash <(curl -fsSL https://raw.githubusercontent.com/bluepanda001/vps-init/main/install.sh)
 ```
 
-首次自动进入中文向导。建议先选 `Reality Only` 测试。
+首次自动进入中文向导。最前面会先问：
+
+```text
+1. 不重装，直接初始化当前系统
+2. 一键 DD / 重装 Ubuntu 24.04 Minimal
+```
+
+如果 VPS 已经是干净 Ubuntu 24.04，选 1。需要从头清盘时选 2；脚本使用 `bin456789/reinstall`，真正继续前必须输入大写 `DD`。重启前可运行 `bash /root/reinstall.sh reset` 取消。
+
+DD 完成并重新 SSH 登录后，再运行同一条一键安装命令，这次选 1，然后建议先选 `Reality Only` 测试。
 
 ## 以后管理
 
