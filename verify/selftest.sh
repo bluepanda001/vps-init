@@ -60,4 +60,10 @@ fi
 if grep -R --include='*.sh' --exclude='selftest.sh' -E 'chmod[[:space:]]+(-R[[:space:]]+)?777' . >/dev/null; then
   echo 'FAIL: chmod 777 found' >&2; exit 1
 fi
+# Optional destructive reinstall entry must stay explicit and pinned.
+grep -q 'bin456789/reinstall' lib/wizard.sh
+grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
+grep -q 'ubuntu 24.04 --minimal' lib/wizard.sh
+grep -q '请输入大写 DD' lib/wizard.sh
+grep -q 'reinstall.sh reset' lib/wizard.sh
 echo 'SELFTEST_OK'
