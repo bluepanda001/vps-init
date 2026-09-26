@@ -65,6 +65,89 @@ wizard_existing_ed25519_key() {
   awk '$1=="ssh-ed25519" {print; exit}' /root/.ssh/authorized_keys
 }
 
+wizard_offer_reinstall() {
+  # Destructive reinstall is pinned to a reviewed upstream commit.
+  local reinstall_repo="bin456789/reinstall"
+  local reinstall_commit="2bcbc96100fe733bf9a16d609f799246f62666e5"
+  local choice virt confirm_word script current_port existing_key
+  local -a cmd
+
+  echo
+  choice="$(wizard_select "系统准备："     "不重装，直接初始化当前系统（推荐：系统已经是干净 Ubuntu 24.04 时选这个）"     "一键 DD / 重装 Ubuntu 24.04 Minimal（bin456789/reinstall）")"
+
+  [[ "$choice" == 2 ]] || return 0
+
+  echo
+  echo "============================================================"
+  echo "                 危险操作：整盘重装"
+  echo "============================================================"
+  echo "将调用我们之前用过的：$reinstall_repo"
+  echo "固定上游提交：$reinstall_commit"
+  echo
+  echo "目标系统：Ubuntu 24.04 Minimal"
+  echo "警告：重装会清除主硬盘全部数据，包括所有分区。"
+  echo "当前 vps-init、3x-ui、Docker、网站、证书等磁盘数据都会被删除。"
+  echo "重启后 SSH 会断开；系统安装完成后，需要重新连接并再次运行 vps-init 一键命令。"
+  echo
+
+  virt="$(systemd-detect-virt 2>/dev/null || true)"
+  case "$virt" in
+    openvz|lxc|lxc-libvirt)
+      die "检测到 $virt。bin456789/reinstall 官方明确不支持 OpenVZ/LXC；不会继续 DD。"
+      ;;
+  esac
+
+  read -r -p "确认清空整盘并重装 Ubuntu 24.04 Minimal，请输入大写 DD： " confirm_word
+  [[ "$confirm_word" == "DD" ]] || { echo "未输入 DD，已取消重装，返回安装向导。"; return 0; }
+
+  script="/root/reinstall.sh"
+  curl -fL --retry 3 --connect-timeout 10 --max-time 60     -o "$script"     "https://raw.githubusercontent.com/$reinstall_repo/$reinstall_commit/reinstall.sh"
+  chmod 700 "$script"
+
+  current_port="$(wizard_detect_ssh_port)"
+  existing_key="$(wizard_existing_ed25519_key || true)"
+
+  cmd=(bash "$script" ubuntu 24.04 --minimal)
+  if [[ -n "$existing_key" ]]; then
+    echo
+    echo "检测到当前 root 的 ED25519 公钥。DD 后将继续使用这把公钥，避免重装后丢失 SSH 登录方式。"
+    cmd+=(--ssh-key "$existing_key" --ssh-port "$current_port")
+  else
+    echo
+    echo "当前没有检测到 root 的 ED25519 authorized key。"
+    echo "上游 reinstall 脚本会在需要时要求你设置重装后的 SSH 登录凭据。"
+  fi
+
+  echo
+  echo "开始准备一键重装（此阶段只写入下一次启动的重装环境；真正清盘在 reboot 后开始）..."
+  "${cmd[@]}"
+
+  echo
+  echo "============================================================"
+  echo "Ubuntu 24.04 Minimal 重装已经准备好。"
+  echo
+  echo "在重启前如果改变主意，可运行："
+  echo "  bash /root/reinstall.sh reset"
+  echo
+  echo "重启后开始真正重装；SSH 会断开。"
+  echo "系统装好并重新 SSH 登录后，再执行："
+  echo
+  echo "  bash <(curl -fsSL https://raw.githubusercontent.com/bluepanda001/vps-init/main/install.sh)"
+  echo
+  echo "第二次进入向导时选择：不重装，直接初始化当前系统。"
+  echo "============================================================"
+  echo
+
+  if wizard_yesno "现在立即 reboot 开始重装？" y; then
+    sync
+    reboot
+    exit 0
+  fi
+
+  echo "已暂缓 reboot。准备好后手动执行：reboot"
+  exit 0
+}
+
 wizard_shell_quote_value() {
   # config.env is sourced by bash; %q safely represents arbitrary single-line values.
   printf '%q' "$1"
@@ -158,6 +241,10 @@ wizard_collect() {
   fi
   wizard_banner
   echo
+
+  # First decision: optionally reinstall to a known-clean Ubuntu before
+  # collecting any VPS Init settings.
+  wizard_offer_reinstall
 
   local mode_choice profile_choice current_port custom="false"
   mode_choice="$(wizard_select "安装方式：" "快速安装（推荐，只问必要项目）" "自定义安装")"
