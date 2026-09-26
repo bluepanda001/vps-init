@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.1 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
+V1.2 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
 
 ## 一键安装
 
@@ -32,7 +32,19 @@ vps-init
 
 ## 中文交互向导
 
-首次向导先选择：
+首次进入向导时，最前面先询问是否重装系统：
+
+```text
+系统准备：
+  1. 不重装，直接初始化当前系统
+  2. 一键 DD / 重装 Ubuntu 24.04 Minimal（bin456789/reinstall）
+```
+
+选 2 时会调用我们之前使用过的 `bin456789/reinstall`，并固定到上游提交 `2bcbc96100fe733bf9a16d609f799246f62666e5`。它会在真正执行前再次要求输入大写 `DD`；重启前仍可用 `bash /root/reinstall.sh reset` 取消。OpenVZ/LXC 会直接拒绝执行。
+
+如果执行 DD：当前系统只负责准备重装环境；`reboot` 后才开始清盘安装 Ubuntu 24.04 Minimal。安装完成重新 SSH 登录后，再运行同一条 VPS Init 一键命令，并选择“不重装”。
+
+随后才进入安装方式与 Profile 选择：
 
 ```text
 安装方式：
@@ -57,7 +69,7 @@ vps-init
 | `nginx-reality` | Nginx Stream SNI 分流 | 必须 | Nginx HTTPS 反代 | Nginx 内部 TLS :8443 |
 | `lucky-reality` | 3x-ui 自带 Xray Reality | 必须 | Lucky HTTPS 反代 | Reality fallback → Lucky :8443 |
 
-3x-ui V1.1 固定使用 `v3.8.5`，只使用 **3x-ui 自带 Xray**，不会安装第二套独立 Xray。
+3x-ui V1.2 固定使用 `v3.8.5`，只使用 **3x-ui 自带 Xray**，不会安装第二套独立 Xray。
 
 ## 3x-ui / Subscription 默认值
 
