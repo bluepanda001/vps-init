@@ -8,6 +8,12 @@
 
 项目只使用 3x-ui 自带 Xray，不单独安装 Xray。公开订阅只允许 HTTPS。核心 Profile 不依赖 Docker、Cloudflare CDN/WS、优选 IP/域名或 CloudflareSub。
 
+## Phase -20 — Optional Reinstall
+
+中文向导第一项先询问是否使用 `bin456789/reinstall` 一键重装 Ubuntu 24.04 Minimal。破坏性操作固定上游提交版本，OpenVZ/LXC 拒绝执行，并要求用户手工输入大写 `DD` 二次确认。若当前 root 已存在 ED25519 authorized key，则传给重装脚本并保持当前 SSH 端口；否则由上游脚本要求设置登录凭据。重启前仍可运行 `bash /root/reinstall.sh reset` 取消。
+
+重装流程只负责准备并触发系统重装，不尝试在跨 reboot 后自动续跑；新系统启动后用户重新运行同一条 VPS Init 一键命令。
+
 ## Phase -10 — Bootstrap / Wizard
 
 GitHub `install.sh` 负责从最新 Release 下载归档并校验 `SHA256SUMS`，安装到 `/opt/vps-init`，创建 `/usr/local/bin/vps-init`。首次进入中文向导；后续直接 `vps-init` 打开管理菜单。向导支持快速安装与自定义安装。
