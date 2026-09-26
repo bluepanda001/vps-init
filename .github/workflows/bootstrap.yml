@@ -1,0 +1,54 @@
+name: Bootstrap VPS Init Source
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  publish-source:
+    if: ${{ hashFiles('.bootstrap/vps-init-v1.1.0-source.tar.gz') != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout bootstrap commit
+        uses: actions/checkout@v4
+
+      - name: Verify source archive
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "1811f1ca28bfed91bc7fa4202bf393bef992eceaefe09fafb7127650364455b5  .bootstrap/vps-init-v1.1.0-source.tar.gz" | sha256sum -c -
+
+      - name: Expand project source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tmp="$(mktemp -d)"
+          tar -xzf .bootstrap/vps-init-v1.1.0-source.tar.gz -C "$tmp"
+          test -x "$tmp/vps-init/vps-init"
+          rsync -a --delete             --exclude '.git'             --exclude '.bootstrap'             --exclude '.github/workflows/bootstrap.yml'             "$tmp/vps-init/" "$GITHUB_WORKSPACE/"
+          rm -rf .bootstrap
+          rm -f .github/workflows/bootstrap.yml
+
+      - name: Run self-test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash verify/selftest.sh
+
+      - name: Commit project source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "Publish VPS Init v1.1.0 source"
+          git push
