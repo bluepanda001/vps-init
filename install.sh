@@ -99,8 +99,12 @@ download_source_ref() {
 }
 
 tag="$(resolve_latest_release || true)"
-if [[ -n "$tag" ]]; then download_release "$tag" || true; fi
-if [[ -z "$src" ]]; then download_source_ref "$BOOTSTRAP_REF" || die "无法从 GitHub 下载项目。请检查仓库是否公开、网络是否正常。"; fi
+if [[ -n "$tag" ]]; then
+  download_release "$tag" || die "发现正式 Release ${tag}，但下载或 SHA256 校验失败。为避免执行未校验源码，已拒绝回退到 ${BOOTSTRAP_REF}。"
+else
+  log "仓库暂无正式 Release；仅在首次发布前回退到 GitHub 源码 ${REPO}@${BOOTSTRAP_REF}。"
+  download_source_ref "$BOOTSTRAP_REF" || die "无法从 GitHub 下载项目。请检查仓库是否公开、网络是否正常。"
+fi
 
 [[ -x "$src/vps-init" ]] || die "下载内容不完整：缺少 vps-init。"
 log "下载完成：VPS Init ${version:-unknown}"
