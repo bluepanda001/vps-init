@@ -72,7 +72,7 @@ if grep -q 'state_set DEPLOYED_PROFILE' core/preflight.sh; then
   echo 'FAIL: preflight must not claim a deployed profile' >&2; exit 1
 fi
 grep -q 'state_set DEPLOYED_PROFILE' vps-init
-if grep -q '"privateKey":priv' modules/3x-ui/xui_api.py; then
+if grep -q '"uuid":uuid,"publicKey":pub,"privateKey":priv' modules/3x-ui/xui_api.py; then
   echo 'FAIL: Reality private key is exposed in helper output' >&2; exit 1
 fi
 grep -q -- '--with-stream_ssl_preread_module' modules/nginx/apply.sh
