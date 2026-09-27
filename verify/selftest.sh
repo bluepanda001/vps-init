@@ -76,7 +76,7 @@ if grep -q '"uuid":uuid,"publicKey":pub,"privateKey":priv' modules/3x-ui/xui_api
   echo 'FAIL: Reality private key is exposed in helper output' >&2; exit 1
 fi
 grep -q -- '--with-stream_ssl_preread_module' modules/nginx/apply.sh
-if grep -R -q 'libnginx-mod-stream-ssl-preread' .; then
+if grep -R --exclude='selftest.sh' -q 'libnginx-mod-stream-ssl-preread' .; then
   echo 'FAIL: nonexistent Ubuntu dependency referenced' >&2; exit 1
 fi
 if grep -q "printf '\\\\n\\\\n\\\\n" modules/subscription/apply.sh; then
