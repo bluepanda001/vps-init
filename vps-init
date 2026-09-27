@@ -103,7 +103,7 @@ show_logs() {
 }
 
 update_self() {
-  local source_file="$PERSIST_DIR/.source.env" repo ref url
+  local source_file="$PERSIST_DIR/.source.env" repo ref
   [[ -r "$source_file" ]] || die "未记录 GitHub 来源。请重新运行项目 README 中的一键安装命令。"
   # shellcheck disable=SC1090
   source "$source_file"
