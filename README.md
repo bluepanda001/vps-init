@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.2 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
+V1.2.1 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
 
 ## 一键安装
 
@@ -18,7 +18,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/bluepanda001/vps-init/main/i
 curl -fsSL https://raw.githubusercontent.com/bluepanda001/vps-init/main/install.sh | bash
 ```
 
-Bootstrap 会优先下载 GitHub 最新 Release、校验 `SHA256SUMS`；如果仓库还没有 Release，则自动回退下载 `main` 源码归档。因此新仓库第一次发布后，一键命令也能立即使用。安装到 `/opt/vps-init`，并创建：
+Bootstrap 会优先下载 GitHub 最新 Release、校验 `SHA256SUMS`。如果已经存在 Release，但下载或校验失败，会直接停止，不再静默回退到未校验的 `main`；只有仓库尚无任何 Release 的首次发布阶段，才允许回退源码归档。安装到 `/opt/vps-init`，并创建：
 
 ```text
 /usr/local/bin/vps-init
@@ -69,7 +69,7 @@ vps-init
 | `nginx-reality` | Nginx Stream SNI 分流 | 必须 | Nginx HTTPS 反代 | Nginx 内部 TLS :8443 |
 | `lucky-reality` | 3x-ui 自带 Xray Reality | 必须 | Lucky HTTPS 反代 | Reality fallback → Lucky :8443 |
 
-3x-ui V1.2 固定使用 `v3.8.5`，只使用 **3x-ui 自带 Xray**，不会安装第二套独立 Xray。
+3x-ui V1.2.1 固定使用 `v3.8.5`，只使用 **3x-ui 自带 Xray**，不会安装第二套独立 Xray。
 
 ## 3x-ui / Subscription 默认值
 
@@ -105,7 +105,7 @@ VPS_IP:2096  -> HTTPS Subscription
 
 如果 2096 在首次部署时已经被占用，脚本会自动选择一个空闲端口并持久保存。
 
-IP HTTPS 证书使用 3x-ui 自己的 `Get SSL for IP Address` / acme.sh 流程，80/tcp 用于 HTTP-01。证书失败会停止，不降级为 HTTP。
+IP HTTPS 证书沿用 3x-ui v3.8.5 的 acme.sh short-lived 方案，80/tcp 用于 HTTP-01，但脚本直接调用 acme.sh，不再靠向 3x-ui 交互菜单连续喂回车。证书失败会停止，不降级为 HTTP，并启用 acme.sh 自动续期。
 
 ## Nginx + Reality
 
@@ -121,7 +121,7 @@ Nginx Stream ssl_preread
                     └─ node.<domain> -> Subscription
 ```
 
-证书使用 Cloudflare DNS-01 + Certbot wildcard。
+证书使用 Cloudflare DNS-01 + Certbot wildcard。Ubuntu 24.04 使用 `nginx` + `libnginx-mod-stream`；部署前会显式确认当前 Nginx 构建包含 `stream_ssl_preread` 支持，并在启动前执行 `nginx -t`。
 
 ## Lucky + Reality
 
@@ -153,7 +153,13 @@ Token 不写进 `config.env`。域名 Profile 第一次部署时隐藏输入，�
 
 脚本只接受 ED25519 公钥。向导会优先检测现有 `/root/.ssh/authorized_keys`；如果没有，可选择粘贴公钥或让脚本显示 Windows PowerShell 生成命令。
 
-SSH 加固分两阶段：先安装公钥并保留当前认证策略，再要求用第二个终端实际验证；只有确认成功后才关闭密码/KbdInteractive root 登录。
+SSH 加固分两阶段：先安装公钥并保留当前认证策略，再要求用第二个终端实际验证；只有确认成功后才关闭密码/KbdInteractive root 登录。Ubuntu 24.04 的 `ssh.socket` 会在修改端口时执行 `daemon-reload` + 重启 socket，并用 `ss` 验证目标端口真的在监听；只要 SSH 端口和上次验证值不同，就强制重新做第二终端登录验证。
+
+## 状态与防火墙安全
+
+- `DEPLOYED_PROFILE` 只会在完整 `verify` 通过后写入；单独运行 preflight 或中途失败不会占住 Profile。
+- `apply` 不再执行 `ufw --force reset`。项目只删除/重建带 `vps-init` 注释的规则，管理员手工添加的其他 UFW 放行规则会保留；默认入站/出站策略仍由项目设置。
+- Reality API helper 不会把服务端 X25519 私钥写到 JSON 输出。
 
 ## 安装后的菜单
 
@@ -224,7 +230,7 @@ Cloudflare Token：
 vps-init update
 ```
 
-会根据 `/opt/vps-init/.source.env` 返回原 GitHub 仓库更新程序文件，同时保留本机 `config.env`、state 和凭据。
+会根据 `/opt/vps-init/.source.env` 返回原 GitHub 仓库更新程序文件，同时保留本机 `config.env`、state 和凭据。更新时复用本机已经安装的 bootstrap；若仓库存在正式 Release，则 payload 必须通过 `SHA256SUMS` 校验。
 
 ## 发布 Release
 
