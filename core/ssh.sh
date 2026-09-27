@@ -1,4 +1,33 @@
 #!/usr/bin/env bash
+
+ssh_socket_activation_in_use() {
+  systemctl cat ssh.socket >/dev/null 2>&1 && {
+    systemctl is-active --quiet ssh.socket 2>/dev/null || systemctl is-enabled --quiet ssh.socket 2>/dev/null
+  }
+}
+
+reload_ssh_runtime() {
+  sshd -t
+  if ssh_socket_activation_in_use; then
+    # Ubuntu 24.04 uses systemd socket activation by default.  The generator
+    # reads Port= from sshd_config, so a daemon-reload + socket restart is
+    # required before the new port is actually bound.
+    systemctl daemon-reload
+    systemctl restart ssh.socket
+    # Reload the service as well so authentication policy changes affect
+    # already spawned/new sshd instances without terminating this session.
+    systemctl reload ssh.service 2>/dev/null || true
+  else
+    systemctl reload ssh.service 2>/dev/null || systemctl reload sshd.service
+  fi
+}
+
+verify_ssh_listener() {
+  if ! ss -H -ltn4 "sport = :${SSH_PORT}" 2>/dev/null | grep -q .; then
+    die "SSH 配置已写入，但 IPv4 实际没有监听 ${SSH_PORT}/tcp。当前会话不要关闭；请检查 ssh.socket/ssh.service。"
+  fi
+}
+
 write_ssh_stage_config() {
   local dropin=/etc/ssh/sshd_config.d/00-vps-init.conf legacy=/etc/ssh/sshd_config.d/99-vps-init.conf
   backup_file "$dropin"
@@ -10,8 +39,8 @@ write_ssh_stage_config() {
 Port ${SSH_PORT}
 PubkeyAuthentication yes
 EOF2
-  sshd -t
-  systemctl reload ssh || systemctl reload sshd
+  reload_ssh_runtime
+  verify_ssh_listener
 }
 
 write_ssh_final_config() {
@@ -25,8 +54,8 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 UsePAM yes
 EOF2
-  sshd -t
-  systemctl reload ssh || systemctl reload sshd
+  reload_ssh_runtime
+  verify_ssh_listener
   sshd -T | grep -qi '^passwordauthentication no$' || die "PasswordAuthentication 未成功关闭。"
   sshd -T | grep -Eqi '^permitrootlogin (prohibit-password|without-password)$' || die "PermitRootLogin 未进入 key-only 模式。"
 }
@@ -71,10 +100,13 @@ EOF2
   fi
 
   state_load
-  if is_true "${SSH_KEY_VERIFIED:-false}"; then
+  if is_true "${SSH_KEY_VERIFIED:-false}" && [[ "${SSH_VERIFIED_PORT:-}" == "$SSH_PORT" ]]; then
     write_ssh_final_config
-    log_ok "SSH 密钥此前已验证；保持 key-only root SSH。"
+    log_ok "SSH 密钥与端口 ${SSH_PORT} 此前均已验证；保持 key-only root SSH。"
     return 0
+  fi
+  if is_true "${SSH_KEY_VERIFIED:-false}"; then
+    log_warn "SSH 密钥此前已验证，但端口从 ${SSH_VERIFIED_PORT:-未知} 变为 ${SSH_PORT}；必须重新做第二终端登录验证。"
   fi
 
   # Stage 1 deliberately does NOT set PermitRootLogin/PasswordAuthentication.
@@ -102,5 +134,6 @@ EOF2
 
   write_ssh_final_config
   state_set SSH_KEY_VERIFIED true
-  log_ok "SSH 密钥登录已验证，root 密码/键盘交互登录已关闭。"
+  state_set SSH_VERIFIED_PORT "$SSH_PORT"
+  log_ok "SSH 密钥登录与端口 ${SSH_PORT} 已验证，root 密码/键盘交互登录已关闭。"
 }
