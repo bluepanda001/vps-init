@@ -83,7 +83,7 @@ if grep -q "printf '\\\\n\\\\n\\\\n" modules/subscription/apply.sh; then
   echo 'FAIL: IP certificate issuance still depends on prompt piping' >&2; exit 1
 fi
 grep -q -- '--certificate-profile shortlived' modules/subscription/apply.sh
-grep -q 'refuses.*fallback\|拒绝回退' install.sh || true
+grep -q '拒绝回退' install.sh
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
