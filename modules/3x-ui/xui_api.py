@@ -120,7 +120,7 @@ def create_reality(args: argparse.Namespace) -> dict[str,Any]:
         if not inbound_id: raise RuntimeError("created inbound id unavailable for fallback setup")
         req(args.base,args.token,"POST",f"panel/api/inbounds/{inbound_id}/fallbacks",{"fallbacks":[{"childId":0,"name":"","alpn":"","path":"","dest":args.fallback,"xver":0,"sortOrder":0}]})
     return {"created":True,"id":inbound_id,
-            "uuid":uuid,"publicKey":pub,"privateKey":priv,"shortId":short_id,"subId":args.sub_id,
+            "uuid":uuid,"publicKey":pub,"shortId":short_id,"subId":args.sub_id,
             "target":target,"serverName":host,"scan":scan}
 
 

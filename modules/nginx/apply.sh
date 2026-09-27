@@ -2,6 +2,8 @@
 module_nginx() {
   [[ "$PROFILE" == "nginx-reality" ]] || return 0
   apt-get install -y nginx libnginx-mod-stream
+  nginx -V 2>&1 | grep -q -- '--with-stream_ssl_preread_module' || \
+    die "当前 Nginx 构建不支持 stream ssl_preread，拒绝继续 nginx-reality Profile。"
   mkdir -p /etc/nginx/stream-conf.d /var/www/vps-init
   install -m 644 "$ROOT_DIR/templates/index.html" /var/www/vps-init/index.html
   backup_file /etc/nginx/nginx.conf

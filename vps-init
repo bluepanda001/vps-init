@@ -103,18 +103,16 @@ show_logs() {
 }
 
 update_self() {
-  local source_file="$PERSIST_DIR/.source.env" repo ref url
+  local source_file="$PERSIST_DIR/.source.env" repo ref
   [[ -r "$source_file" ]] || die "未记录 GitHub 来源。请重新运行项目 README 中的一键安装命令。"
   # shellcheck disable=SC1090
   source "$source_file"
   repo="${VPSINIT_REPO:-}"; ref="${VPSINIT_BOOTSTRAP_REF:-main}"
   [[ -n "$repo" && "$repo" == */* ]] || die "GitHub 仓库来源尚未配置。"
-  url="https://raw.githubusercontent.com/${repo}/${ref}/install.sh"
   log_info "从 GitHub 更新 VPS Init：${repo}@${ref}"
-  curl -fsSL "$url" -o /tmp/vps-init-install.sh
-  chmod 700 /tmp/vps-init-install.sh
-  VPSINIT_REPO="$repo" VPSINIT_BOOTSTRAP_REF="$ref" bash /tmp/vps-init-install.sh --update --no-menu
-  rm -f /tmp/vps-init-install.sh
+  # Reuse the already installed bootstrap instead of executing a newly fetched
+  # unverified install.sh. The bootstrap itself prefers SHA256-verified Releases.
+  VPSINIT_REPO="$repo" VPSINIT_BOOTSTRAP_REF="$ref" bash "$ROOT_DIR/install.sh" --update --no-menu
   log_ok "更新完成。重新执行：vps-init"
 }
 
@@ -224,7 +222,10 @@ echo >> "$SECRETS_FILE" 2>/dev/null || true
 chmod 600 "$SECRETS_FILE" 2>/dev/null || true
 
 if verify_all; then
-  log_ok "全部阶段完成。"
+  state_set DEPLOYED_PROFILE "$PROFILE"
+  state_set DEPLOYED_VERSION "$VERSION"
+  state_set DEPLOYMENT_VERIFIED_AT "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  log_ok "全部阶段完成；Profile 已在验收通过后写入部署状态。"
 else
   die "部署完成但验收存在失败项，请查看 $REPORT_FILE。"
 fi

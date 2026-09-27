@@ -39,6 +39,7 @@ verify_all() {
     echo
     echo "== Checks =="
     check "sshd syntax" sshd -t
+    check "SSH IPv4 listener on ${SSH_PORT}" bash -c "ss -H -ltn4 'sport = :${SSH_PORT}' | grep -q ."
     if sshd -T | grep -qi '^passwordauthentication no$'; then echo '[OK]   SSH password auth disabled'; else echo '[FAIL] SSH password auth still enabled'; failed=1; fi
     if sshd -T | grep -qi '^pubkeyauthentication yes$'; then echo '[OK]   SSH pubkey auth enabled'; else echo '[FAIL] SSH pubkey auth disabled'; failed=1; fi
     if sshd -T | grep -Eqi '^permitrootlogin (prohibit-password|without-password)$'; then echo '[OK]   root SSH is key-only'; else echo '[FAIL] root SSH policy is not key-only'; failed=1; fi
@@ -82,6 +83,7 @@ verify_all() {
       check "public HTTPS panel through 443" curl -fsS --max-time 10 --resolve "${PANEL_DOMAIN}:443:127.0.0.1" -o /dev/null "https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"
     fi
     if [[ "$PROFILE" == nginx-reality ]]; then
+      check "nginx stream ssl_preread support" bash -c "nginx -V 2>&1 | grep -q -- '--with-stream_ssl_preread_module'"
       check "nginx syntax" nginx -t
       check "nginx active" systemctl is-active --quiet nginx
     fi

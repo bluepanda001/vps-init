@@ -62,9 +62,9 @@ core_preflight() {
       fi
     fi
     if command_exists ufw && ufw status 2>/dev/null | grep -q '^Status: active'; then
-      log_warn "检测到已有 UFW 规则。apply 会按当前 Profile 重建 UFW 规则集。"
-      if ! confirm "允许重建现有 UFW 规则？" n; then
-        die "未授权修改现有 UFW，已停止。"
+      log_warn "检测到已有 UFW 规则。apply 会保留人工规则，只刷新带 vps-init 注释的项目规则，并设置默认入站/出站策略。"
+      if ! confirm "允许 vps-init 管理自己的 UFW 规则并设置默认策略？" n; then
+        die "未授权修改 UFW，已停止。"
       fi
     fi
   fi
@@ -72,7 +72,6 @@ core_preflight() {
   state_set SERVER_IP "$SERVER_IP"
   state_set SERVER_IPV6 "$SERVER_IPV6"
   state_set DEFAULT_INTERFACE "$DEFAULT_INTERFACE"
-  state_set DEPLOYED_PROFILE "$PROFILE"
 
   mkdir -p "$BACKUP_DIR"
   log_ok "预检完成。"
