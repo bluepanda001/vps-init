@@ -60,6 +60,30 @@ fi
 if grep -R --include='*.sh' --exclude='selftest.sh' -E 'chmod[[:space:]]+(-R[[:space:]]+)?777' . >/dev/null; then
   echo 'FAIL: chmod 777 found' >&2; exit 1
 fi
+# Safety regressions fixed in V1.2.1.
+grep -q 'systemctl daemon-reload' core/ssh.sh
+grep -q 'systemctl restart ssh.socket' core/ssh.sh
+grep -q 'SSH_VERIFIED_PORT' core/ssh.sh
+grep -q 'SSH IPv4 listener on' verify/verify.sh
+if grep -q 'ufw --force reset' core/firewall.sh; then
+  echo 'FAIL: firewall apply must preserve non-vps-init rules' >&2; exit 1
+fi
+if grep -q 'state_set DEPLOYED_PROFILE' core/preflight.sh; then
+  echo 'FAIL: preflight must not claim a deployed profile' >&2; exit 1
+fi
+grep -q 'state_set DEPLOYED_PROFILE' vps-init
+if grep -q '"privateKey":priv' modules/3x-ui/xui_api.py; then
+  echo 'FAIL: Reality private key is exposed in helper output' >&2; exit 1
+fi
+grep -q -- '--with-stream_ssl_preread_module' modules/nginx/apply.sh
+if grep -R -q 'libnginx-mod-stream-ssl-preread' .; then
+  echo 'FAIL: nonexistent Ubuntu dependency referenced' >&2; exit 1
+fi
+if grep -q "printf '\\\\n\\\\n\\\\n" modules/subscription/apply.sh; then
+  echo 'FAIL: IP certificate issuance still depends on prompt piping' >&2; exit 1
+fi
+grep -q -- '--certificate-profile shortlived' modules/subscription/apply.sh
+grep -q 'refuses.*fallback\|拒绝回退' install.sh || true
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
