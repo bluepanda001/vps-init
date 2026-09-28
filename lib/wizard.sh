@@ -78,7 +78,14 @@ wizard_existing_ed25519_keys() {
 }
 
 wizard_existing_ed25519_key() {
-  wizard_existing_ed25519_keys | head -1
+  local vps_main
+  vps_main="$(wizard_existing_vps_main_key || true)"
+  if [[ -n "$vps_main" ]]; then
+    printf '%s\n' "$vps_main"
+    return 0
+  fi
+  [[ -r /root/.ssh/authorized_keys ]] || return 1
+  awk '$1=="ssh-ed25519" {print; exit}' /root/.ssh/authorized_keys
 }
 
 wizard_existing_vps_main_key() {
