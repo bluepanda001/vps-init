@@ -19,7 +19,9 @@ ensure_acme_renewal() {
   "$acme" --install-cronjob >/dev/null 2>&1 ||     die "acme.sh 续期 cronjob 安装失败；不会把本次部署报告为续期已启用。"
 
   cron_dump="$(crontab -l 2>/dev/null || true)"
-  if ! printf '%s\n' "$cron_dump" | grep -F "$acme" | grep -q -- '--cron'; then
+  # acme.sh commonly writes the path as "/root/.acme.sh"/acme.sh, so do not
+  # require one contiguous literal pathname here.
+  if ! printf '%s\n' "$cron_dump" | grep -Eq 'acme\.sh.*--cron'; then
     die "未在 root crontab 中确认 acme.sh --cron 任务；IP 短期证书续期未真正启用。"
   fi
 }
