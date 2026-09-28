@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.2.3 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
+V1.2.4 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
 
 ## 一键安装
 
@@ -40,7 +40,7 @@ vps-init
   2. 一键 DD / 重装 Ubuntu 24.04 Minimal（bin456789/reinstall）
 ```
 
-选 2 时会调用我们之前使用过的 `bin456789/reinstall`，并固定到上游提交 `2bcbc96100fe733bf9a16d609f799246f62666e5`。DD 前会读取 root 的全部普通 ED25519 `authorized_keys`、去重，并把 `vps-main` 排在最前后通过重复的 `--ssh-key` 全部传给重装脚本，避免旧钥匙排在第一行时把统一主密钥丢掉。它会在真正执行前再次要求输入大写 `DD`；重启前仍可用 `bash /root/reinstall.sh reset` 取消。OpenVZ/LXC 会直接拒绝执行。
+选 2 时会调用我们之前使用过的 `bin456789/reinstall`，并固定到上游提交 `2bcbc96100fe733bf9a16d609f799246f62666e5`。DD 前会读取 root 的全部普通 ED25519 `authorized_keys`、去重，并把 `vps-main` 排在最前后通过重复的 `--ssh-key` 全部传给重装脚本，避免旧钥匙排在第一行时把统一主密钥丢掉；同时固定传入 `--user root`，避免上游脚本在无交互/管道执行时卡在用户名提示。它会在真正执行前再次要求输入大写 `DD`；重启前仍可用 `bash /root/reinstall.sh reset` 取消。OpenVZ/LXC 会直接拒绝执行。
 
 如果执行 DD：当前系统只负责准备重装环境；`reboot` 后才开始清盘安装 Ubuntu 24.04 Minimal。安装完成重新 SSH 登录后，再运行同一条 VPS Init 一键命令，并选择“不重装”。
 
@@ -137,7 +137,7 @@ Internet :443
       └─ node.<domain> -> Subscription
 ```
 
-Lucky 固定使用已校验的 `2.27.2` release；证书由 Cloudflare DNS-01 + Certbot 获取后同步进 Lucky。
+Lucky 固定使用已校验的 `2.27.2` release；证书由 Cloudflare DNS-01 + Certbot 获取后同步进 Lucky。V1.2.4 起不再假定默认账号 `666/666`：服务启动后从 root-only 的 `/opt/lucky/lucky.conf` 读取当前实际管理账号，只在本机 loopback API 上完成认证并立即轮换/对齐到 vps-init 持久化的随机账号密码。
 
 ## Cloudflare Token
 

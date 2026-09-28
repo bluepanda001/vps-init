@@ -1,5 +1,12 @@
 # Release Notes
 
+## v1.2.4
+
+- 一键 DD 固定向 `bin456789/reinstall` 传入 `--user root`，避免无交互执行时停在 Username 提示并因 EOF 退出。
+- Lucky 不再假定 `666/666`。启动后从 root-only 的 `/opt/lucky/lucky.conf` 读取实际当前管理员凭据，通过 loopback API 认证后立即轮换/对齐到 vps-init 持久化的随机凭据。
+- Lucky 管理凭据接管逻辑保持幂等：若项目凭据已经可登录则不改；否则才使用本地配置中的当前凭据完成一次安全接管。
+- 新增相应 self-test，防止 DD 用户名交互和 Lucky 默认口令假设回归。
+
 ## v1.2.3
 
 - Bootstrap 的 Release 探测改为 fail-closed：只有 GitHub 明确返回“没有正式 Release”时才允许首次发布前源码回退；网络/HTTP/重定向异常不再被误判为“无 Release”。
