@@ -22,6 +22,39 @@ def request(base,method,path,token='',body=None,query=None):
 
 def login(base,user,password): return request(base,'POST','/api/login',body={'Account':user,'Password':password})['token']
 
+def load_local_admin(config_path):
+    try:
+      data=json.loads(Path(config_path).read_text())
+      base=data.get('BaseConfigure') if isinstance(data,dict) else None
+      user=base.get('AdminAccount') if isinstance(base,dict) else None
+      password=base.get('AdminPassword') if isinstance(base,dict) else None
+    except Exception as e:
+      raise RuntimeError(f'cannot read Lucky config: {e}') from None
+    if not isinstance(user,str) or not user or not isinstance(password,str) or not password:
+      raise RuntimeError('Lucky config does not contain a usable BaseConfigure admin credential')
+    return user,password
+
+def ensure_admin(base,config_path,new_user,new_password):
+    # Idempotent fast path: project-managed credentials already work.
+    try:
+      login(base,new_user,new_password)
+      return False
+    except Exception:
+      pass
+
+    # Do not assume upstream defaults such as 666/666. Lucky persists the
+    # actual active admin credential in its root-only JSON config, so bootstrap
+    # from that local source of truth and immediately rotate to our random pair.
+    old_user,old_password=load_local_admin(config_path)
+    tok=login(base,old_user,old_password)
+    cfg=request(base,'GET','/api/baseconfigure',tok)['baseconfigure']
+    cfg['AdminAccount']=new_user
+    cfg['AdminPassword']=new_password
+    cfg['AllowInternetaccess']=False
+    request(base,'PUT','/api/baseconfigure',tok,body=cfg)
+    login(base,new_user,new_password)
+    return True
+
 def subrule(domain,location,remark):
     return {'Enable':True,'Key':'','Remark':remark,'Domains':[domain],'Locations':[location],
       'EnableAccessLog':True,'LogLevel':4,'LogOutputToConsole':False,'AccessLogMaxNum':1000,'WebListShowLastLogMaxCount':10,
@@ -57,14 +90,24 @@ def configure_rule(base,token,panel_domain,node_domain,panel_port,sub_port,landi
     request(base,'POST','/api/reverseproxyrule',token,body=body)
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--base',default='http://127.0.0.1:16601'); ap.add_argument('--user',required=True); ap.add_argument('--password',required=True)
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--base',default='http://127.0.0.1:16601')
+    ap.add_argument('--user')
+    ap.add_argument('--password')
     sp=ap.add_subparsers(dest='cmd',required=True)
     p=sp.add_parser('set-admin'); p.add_argument('--new-user',required=True); p.add_argument('--new-password',required=True)
+    p=sp.add_parser('ensure-admin'); p.add_argument('--config',required=True); p.add_argument('--new-user',required=True); p.add_argument('--new-password',required=True)
     p=sp.add_parser('sync-cert'); p.add_argument('--cert',required=True); p.add_argument('--key',required=True)
     p=sp.add_parser('configure-web'); p.add_argument('--panel-domain',required=True); p.add_argument('--node-domain',required=True); p.add_argument('--panel-port',type=int,required=True); p.add_argument('--sub-port',type=int,required=True); p.add_argument('--landing-port',type=int,default=18080)
     sp.add_parser('status')
     a=ap.parse_args()
     try:
+      if a.cmd=='ensure-admin':
+        changed=ensure_admin(a.base,a.config,a.new_user,a.new_password)
+        print(json.dumps({'ok':True,'changed':changed}))
+        return 0
+      if not a.user or not a.password:
+        raise RuntimeError('--user and --password are required for this command')
       tok=login(a.base,a.user,a.password)
       if a.cmd=='set-admin':
         cfg=request(a.base,'GET','/api/baseconfigure',tok)['baseconfigure']; cfg['AdminAccount']=a.new_user; cfg['AdminPassword']=a.new_password; cfg['AllowInternetaccess']=False
