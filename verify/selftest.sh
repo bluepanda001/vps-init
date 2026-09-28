@@ -128,6 +128,22 @@ grep -q -- "--exclude '__pycache__'" .github/workflows/release.yml
 grep -q -- "--exclude '\*.pyc'" .github/workflows/release.yml
 grep -q -- "--exclude='\*.pyc'" lib/common.sh
 
+# Exercise the local 3x-ui installer patch against the exact two upstream
+# lines it is designed to harden. This catches syntax/quoting drift without
+# downloading or executing the real root installer in CI.
+die() { echo "FAIL: $*" >&2; exit 1; }
+# shellcheck disable=SC1091
+source modules/3x-ui/apply.sh
+xui_patch_fixture="$(mktemp)"
+cat > "$xui_patch_fixture" <<'EOF_XUI_PATCH'
+    actual=$(sha256sum "${file}" | awk '{print $1}')
+    local script_ref="${tag_version}"
+EOF_XUI_PATCH
+patch_pinned_xui_installer "$xui_patch_fixture"
+grep -q 'Project-pinned checksum mismatch' "$xui_patch_fixture"
+grep -q 'VPSINIT_XUI_SCRIPT_REF' "$xui_patch_fixture"
+rm -f "$xui_patch_fixture"
+
 # V1.2.3: 3x-ui installer repository content is immutable-commit pinned and
 # release archives are independently pinned by project-owned digests.
 grep -q '7ef22f94c950ff09f0870e2295fa65ad5968742c' modules/3x-ui/apply.sh
