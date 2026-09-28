@@ -61,7 +61,7 @@ fi
 if grep -R --include='*.sh' --exclude='selftest.sh' -E 'chmod[[:space:]]+(-R[[:space:]]+)?777' . >/dev/null; then
   echo 'FAIL: chmod 777 found' >&2; exit 1
 fi
-# Safety regressions fixed in V1.2.1/V1.2.2/V1.2.3.
+# Safety regressions fixed in V1.2.1/V1.2.2/V1.2.3/V1.2.4.
 grep -q 'systemctl daemon-reload' core/ssh.sh
 grep -q 'systemctl restart ssh.socket' core/ssh.sh
 grep -q 'SSH_VERIFIED_PORT' core/ssh.sh
@@ -155,12 +155,84 @@ if grep -q 'raw.githubusercontent.com/MHSanaei/3x-ui/v3.8.5/install.sh' modules/
   echo 'FAIL: 3x-ui installer must not be fetched through a movable tag' >&2; exit 1
 fi
 
+# V1.2.4: DD must be fully non-interactive for the target Linux username.
+grep -Fq 'cmd=(bash "$script" ubuntu 24.04 --minimal --user root)' lib/wizard.sh
+
+# V1.2.4: Lucky must bootstrap from its actual root-only config instead of
+# assuming upstream default credentials.
+grep -q 'ensure-admin' modules/lucky/apply.sh
+grep -q -- '--config /opt/lucky/lucky.conf' modules/lucky/apply.sh
+grep -q 'load_local_admin' modules/lucky/lucky_api.py
+if grep -q -- '--user 666 --password 666' modules/lucky/apply.sh; then
+  echo 'FAIL: Lucky automation must not assume 666/666' >&2; exit 1
+fi
+
+python3 - <<'PY_LUCKY'
+import importlib.util
+import json
+import tempfile
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("lucky_api", "modules/lucky/lucky_api.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+with tempfile.TemporaryDirectory() as td:
+    cfg = Path(td) / "lucky.conf"
+    cfg.write_text(json.dumps({
+        "BaseConfigure": {
+            "AdminAccount": "existing-admin",
+            "AdminPassword": "existing-password"
+        }
+    }))
+
+    assert mod.load_local_admin(cfg) == ("existing-admin", "existing-password")
+
+    state = {"rotated": False}
+    put_bodies = []
+
+    def fake_login(base, user, password):
+        if (user, password) == ("managed-admin", "managed-password"):
+            if state["rotated"]:
+                return "managed-token"
+            raise RuntimeError("not rotated yet")
+        if (user, password) == ("existing-admin", "existing-password"):
+            return "old-token"
+        raise RuntimeError("bad credential")
+
+    def fake_request(base, method, path, token="", body=None, query=None):
+        if method == "GET" and path == "/api/baseconfigure":
+            assert token == "old-token"
+            return {"baseconfigure": {
+                "AdminAccount": "existing-admin",
+                "AdminPassword": "existing-password",
+                "AllowInternetaccess": True,
+                "AdminWebListenPort": 16601
+            }}
+        if method == "PUT" and path == "/api/baseconfigure":
+            assert token == "old-token"
+            assert body["AdminAccount"] == "managed-admin"
+            assert body["AdminPassword"] == "managed-password"
+            assert body["AllowInternetaccess"] is False
+            put_bodies.append(body)
+            state["rotated"] = True
+            return {"ret": 0}
+        raise AssertionError((method, path, token))
+
+    mod.login = fake_login
+    mod.request = fake_request
+    assert mod.ensure_admin("http://127.0.0.1:16601", cfg, "managed-admin", "managed-password") is True
+    assert len(put_bodies) == 1
+    assert mod.ensure_admin("http://127.0.0.1:16601", cfg, "managed-admin", "managed-password") is False
+    assert len(put_bodies) == 1
+PY_LUCKY
+
 grep -q '拒绝回退' install.sh
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.3" ]]
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.4" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
-grep -q 'ubuntu 24.04 --minimal' lib/wizard.sh
+grep -q 'ubuntu 24.04 --minimal --user root' lib/wizard.sh
 grep -q '请输入大写 DD' lib/wizard.sh
 grep -q 'reinstall.sh reset' lib/wizard.sh
 echo 'SELFTEST_OK'
