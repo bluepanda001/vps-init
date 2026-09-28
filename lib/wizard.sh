@@ -135,7 +135,7 @@ wizard_offer_reinstall() {
   current_port="$(wizard_detect_ssh_port)"
   mapfile -t existing_keys < <(wizard_existing_ed25519_keys || true)
 
-  cmd=(bash "$script" ubuntu 24.04 --minimal)
+  cmd=(bash "$script" ubuntu 24.04 --minimal --user root)
   if (( ${#existing_keys[@]} > 0 )); then
     echo
     echo "检测到当前 root 的 ${#existing_keys[@]} 把 ED25519 公钥。DD 后会全部保留；vps-main 会优先传入。"
