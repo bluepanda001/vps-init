@@ -33,12 +33,20 @@ vps-init
 2. Reality Only。
 3. 填服务商名。
 4. 沿用当前 SSH 端口。
-5. 使用已有 ED25519 key，或按提示生成并粘贴 `.pub`。
-6. Reality Target 使用自动检测。
-7. 面板路径默认 `/zhg/`。
-8. Subscription URI Path 默认 `/zhg/`；它和 Panel URI Path 是独立设置，只是默认值相同。
-9. Clash/Mihomo 默认开启 Routing + Auto Detect。
-10. 第二终端验证 ED25519 SSH 后，确认关闭密码登录。
+5. SSH 使用统一 `vps-main`：已有就粘贴同一个 `vps-main-ed25519.pub`；只有第一次才生成 `vps-main-ed25519`。
+6. Netcatty 为这台 VPS 单独新建 Identity：名称使用 VPS 名称，Username=`root`，Key=`vps-main`；Host 绑定该 Identity，不用“本地密钥”。
+7. Reality Target 使用自动检测。
+8. 面板路径默认 `/zhg/`。
+9. Subscription URI Path 默认 `/zhg/`；它和 Panel URI Path 是独立设置，只是默认值相同。
+10. Clash/Mihomo 默认开启 Routing + Auto Detect。
+11. 保持当前会话不关，用第二终端验证 `root + vps-main` 成功后，再确认关闭密码登录。
+
+
+## Netcatty 多 VPS 规范
+
+统一只维护一把 Keychain 密钥 `vps-main`。每台 VPS 单独建立一个 Identity，Identity 名称与 VPS 名称一致，用户名默认 `root`，底层都引用 `vps-main`。这样 Cloud Sync 只需同步一把私钥，但每台主机仍有独立身份配置。
+
+新 VPS 如果云镜像自带 `PermitRootLogin no` 或 `PubkeyAuthentication no`，不要手工猜配置来源；让 vps-init 的 SSH 阶段写入优先级更高的项目 drop-in，并以 `sshd -T` 实际值为准。第二终端验证成功前，不关闭当前连接。
 
 ## Cloudflare 域名 Profile
 
