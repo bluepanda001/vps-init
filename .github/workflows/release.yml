@@ -61,7 +61,17 @@ jobs:
             --exclude '.git' \
             --exclude 'dist' \
             --exclude 'config.env' \
+            --exclude '__pycache__' \
+            --exclude '*.pyc' \
+            --exclude '*.pyo' \
             ./ dist/stage/vps-init/
+
+          if find dist/stage/vps-init -type d -name '__pycache__' -print -quit | grep -q . || \
+             find dist/stage/vps-init -type f \( -name '*.pyc' -o -name '*.pyo' \) -print -quit | grep -q .; then
+            echo "Python bytecode/cache leaked into release staging." >&2
+            exit 1
+          fi
+
           tar -C dist/stage -czf "dist/vps-init-${RELEASE_VER}.tar.gz" vps-init
           (cd dist && sha256sum "vps-init-${RELEASE_VER}.tar.gz" > SHA256SUMS)
 
