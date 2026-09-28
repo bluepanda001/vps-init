@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.2.1 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
+V1.2.2 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
 
 ## 一键安装
 
@@ -69,7 +69,7 @@ vps-init
 | `nginx-reality` | Nginx Stream SNI 分流 | 必须 | Nginx HTTPS 反代 | Nginx 内部 TLS :8443 |
 | `lucky-reality` | 3x-ui 自带 Xray Reality | 必须 | Lucky HTTPS 反代 | Reality fallback → Lucky :8443 |
 
-3x-ui V1.2.1 固定使用 `v3.8.5`，只使用 **3x-ui 自带 Xray**，不会安装第二套独立 Xray。
+3x-ui V1.2.2 固定使用 `v3.8.5`，只使用 **3x-ui 自带 Xray**，不会安装第二套独立 Xray。
 
 ## 3x-ui / Subscription 默认值
 
@@ -149,11 +149,34 @@ Token 不写进 `config.env`。域名 Profile 第一次部署时隐藏输入，�
 
 权限 `600`。建议 Token 只限制到目标 Zone，并至少具备 **Zone Read + DNS Write**。
 
-## SSH
+## SSH / Netcatty 统一规范
 
-脚本只接受 ED25519 公钥。向导会优先检测现有 `/root/.ssh/authorized_keys`；如果没有，可选择粘贴公钥或让脚本显示 Windows PowerShell 生成命令。
+脚本只接受 ED25519 公钥。V1.2.2 起默认采用“一把主密钥 + 每台 VPS 一个 Identity”的管理方式：
 
-SSH 加固分两阶段：先安装公钥并保留当前认证策略，再要求用第二个终端实际验证；只有确认成功后才关闭密码/KbdInteractive root 登录。Ubuntu 24.04 的 `ssh.socket` 会在修改端口时执行 `daemon-reload` + 重启 socket，并用 `ss` 验证目标端口真的在监听；只要 SSH 端口和上次验证值不同，就强制重新做第二终端登录验证。
+```text
+Windows / Netcatty Keychain
+└─ vps-main
+   └─ 私钥文件：%USERPROFILE%\.ssh\vps-main-ed25519
+
+Netcatty Identities
+├─ RackNerd        -> root + vps-main
+├─ DC2.LA.TRI      -> root + vps-main
+├─ US.LA.TRI.Basic -> root + vps-main
+└─ 新 VPS          -> root + vps-main
+```
+
+第一次没有主密钥时，在 Windows PowerShell 生成一次：
+
+```powershell
+ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\vps-main-ed25519" -C "vps-main"
+Get-Content "$env:USERPROFILE\.ssh\vps-main-ed25519.pub" | Set-Clipboard
+```
+
+以后新 VPS **不再重新生成私钥**，始终粘贴同一个 `vps-main-ed25519.pub`。Netcatty 中把无 `.pub` 后缀的私钥导入 Keychain，Label 固定为 `vps-main`；然后每台 VPS 新建一个独立 Identity，Identity 名称建议直接使用 `SERVER_NAME`，用户名 `root`，密钥选择 `vps-main`。主机认证选择该 Identity，不再使用依赖 Windows 用户目录路径的“本地密钥”。
+
+SSH 加固仍分两阶段：先把公钥安装到 `/root/.ssh/authorized_keys`，并启用 **root 公钥登录**，再要求保持当前会话、用第二个终端实际验证；确认成功后才关闭全局 PasswordAuthentication / KbdInteractive。最终基线是 `PermitRootLogin prohibit-password` + `PubkeyAuthentication yes`，即 root 可以用密钥直接登录，但不能用密码登录。
+
+Ubuntu 24.04 的 `ssh.socket` 在修改端口时会执行 `daemon-reload` + 重启 socket，并用 `ss` 验证目标端口真的在监听。项目 SSH drop-in 使用 `00-00-vps-init.conf`，并验证 `sshd -T` 的实际值，避免云镜像里的 `00-hardening.conf` 等更早规则把 `PermitRootLogin` 或 `PubkeyAuthentication` 覆盖成 `no`。只要 SSH 端口和上次验证值不同，就强制重新做第二终端登录验证。
 
 ## 状态与防火墙安全
 

@@ -65,6 +65,11 @@ wizard_existing_ed25519_key() {
   awk '$1=="ssh-ed25519" {print; exit}' /root/.ssh/authorized_keys
 }
 
+wizard_existing_vps_main_key() {
+  [[ -r /root/.ssh/authorized_keys ]] || return 1
+  awk '$1=="ssh-ed25519" && $0 ~ /[[:space:]]vps-main$/ {print; exit}' /root/.ssh/authorized_keys
+}
+
 wizard_offer_reinstall() {
   # Destructive reinstall is pinned to a reviewed upstream commit.
   local reinstall_repo="bin456789/reinstall"
@@ -187,44 +192,59 @@ EOF2
 }
 
 wizard_collect_ssh_key() {
-  W_SSH_IDENTITY_HINT=""
-  local existing choice provider_slug ipcompact keyname pasted
-  existing="$(wizard_existing_ed25519_key || true)"
-  if [[ -n "$existing" ]]; then
+  W_SSH_IDENTITY_HINT="vps-main-ed25519"
+  local existing_vps_main existing_any choice pasted
+  existing_vps_main="$(wizard_existing_vps_main_key || true)"
+  existing_any="$(wizard_existing_ed25519_key || true)"
+
+  if [[ -n "$existing_vps_main" ]]; then
     echo
-    echo "检测到 root 已有 ED25519 authorized_keys："
-    ssh-keygen -lf <(printf '%s\n' "$existing") 2>/dev/null || true
-    if wizard_yesno "直接使用现有公钥？" y; then
-      W_SSH_PUBLIC_KEY="$existing"
+    echo "检测到 root 已经安装统一 vps-main 公钥："
+    ssh-keygen -lf <(printf '%s\n' "$existing_vps_main") 2>/dev/null || true
+    if wizard_yesno "继续使用这把 vps-main？" y; then
+      W_SSH_PUBLIC_KEY="$existing_vps_main"
       return 0
     fi
   fi
 
-  choice="$(wizard_select $'SSH 公钥：\n  推荐使用 ED25519。' \
-    "粘贴已有 ssh-ed25519 公钥" \
-    "显示 Windows PowerShell 生成命令，然后回来粘贴")"
+  local -a options=(
+    "粘贴现有 vps-main 的 ssh-ed25519 公钥（推荐：所有普通 VPS 共用）"
+    "第一次创建 vps-main：显示 Windows PowerShell 命令，然后回来粘贴"
+  )
+  if [[ -n "$existing_any" && "$existing_any" != "$existing_vps_main" ]]; then
+    options+=("使用服务器当前已有 ED25519 公钥（兼容旧配置，不推荐作为统一方案）")
+  fi
+
+  choice="$(wizard_select "SSH 公钥（标准方案：一把 vps-main + 每台 VPS 一个 Netcatty Identity）：" "${options[@]}")"
+
   if [[ "$choice" == 2 ]]; then
-    provider_slug="$(printf '%s' "${W_PROVIDER:-vps}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')"
-    [[ -n "$provider_slug" ]] || provider_slug="vps"
-    ipcompact="${W_SERVER_IP//./}"
-    keyname="id_ed25519_${provider_slug}_${ipcompact}"
-    W_SSH_IDENTITY_HINT="$keyname"
-    cat <<EOF2
+    cat <<'EOF2'
 
 请在你自己的 Windows PowerShell 另开窗口执行：
 
-ssh-keygen -t ed25519 -f "\$env:USERPROFILE\\.ssh\\${keyname}" -C "${provider_slug}-${W_SERVER_IP}"
-Get-Content "\$env:USERPROFILE\\.ssh\\${keyname}.pub" | Set-Clipboard
+ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\vps-main-ed25519" -C "vps-main"
+Get-Content "$env:USERPROFILE\.ssh\vps-main-ed25519.pub" | Set-Clipboard
 
-只需要复制 .pub 公钥，绝对不要上传私钥。
+生成后，把无 .pub 后缀的私钥导入 Netcatty Keychain，Label 固定为 vps-main。
+私钥只保存在 Windows / Netcatty Keychain，绝对不要上传到 VPS、GitHub 或聊天。
 EOF2
+  elif [[ "$choice" == 3 && -n "$existing_any" ]]; then
+    W_SSH_PUBLIC_KEY="$existing_any"
+    W_SSH_IDENTITY_HINT=""
+    return 0
   fi
+
   while true; do
     read -r -p "现在粘贴完整 ssh-ed25519 公钥: " pasted
     if [[ "$pasted" == ssh-ed25519\ * ]]; then
       local tmp
-      tmp="$(mktemp)"; printf '%s\n' "$pasted" > "$tmp"
-      if ssh-keygen -l -f "$tmp" >/dev/null 2>&1; then rm -f "$tmp"; W_SSH_PUBLIC_KEY="$pasted"; return 0; fi
+      tmp="$(mktemp)"
+      printf '%s\n' "$pasted" > "$tmp"
+      if ssh-keygen -l -f "$tmp" >/dev/null 2>&1; then
+        rm -f "$tmp"
+        W_SSH_PUBLIC_KEY="$pasted"
+        return 0
+      fi
       rm -f "$tmp"
     fi
     echo "这不是可解析的 ssh-ed25519 公钥，请重新粘贴。"
@@ -274,8 +294,8 @@ wizard_collect() {
   echo
   echo "检测到公网 IPv4：$W_SERVER_IP"
 
-  W_PROVIDER="$(wizard_prompt_default "VPS 服务商（只用于密钥命名/报告，例如 racknerd、vmiss）" "vps")"
-  W_SERVER_NAME="$(wizard_prompt_default "这台 VPS 的名称（可留空）" "${W_PROVIDER}-${W_SERVER_IP}")"
+  W_PROVIDER="$(wizard_prompt_default "VPS 服务商（用于名称/报告，例如 racknerd、vmiss）" "vps")"
+  W_SERVER_NAME="$(wizard_prompt_default "这台 VPS 的名称（同时建议作为 Netcatty Identity 名称）" "${W_PROVIDER}-${W_SERVER_IP}")"
   current_port="$(wizard_detect_ssh_port)"
   if [[ "$custom" == true ]]; then
     W_SSH_PORT="$(wizard_prompt_default "SSH 端口" "$current_port")"

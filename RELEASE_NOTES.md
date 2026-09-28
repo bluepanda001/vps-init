@@ -1,5 +1,14 @@
 # Release Notes
 
+## v1.2.2
+
+- SSH 管理统一为一把 `vps-main`：Windows 私钥固定建议为 `vps-main-ed25519`，所有普通 VPS 复用同一个公钥。
+- Netcatty 统一为“每台 VPS 一个 Identity”：Identity 名称使用 VPS 名称，Username=`root`，Key=`vps-main`；Host 绑定 Identity，不再依赖“本地密钥”路径。
+- SSH 向导不再默认按服务商/IP为每台 VPS 生成不同私钥；只有第一次才提示生成 `vps-main`。
+- Stage 1 会明确启用 root 公钥登录，再要求第二终端验证；最终保持 `PermitRootLogin prohibit-password` + `PubkeyAuthentication yes`。
+- 项目 SSH drop-in 提前为 `00-00-vps-init.conf`，并验证 `sshd -T` 实际值，避免 `00-hardening.conf` 等云镜像规则把 root/public-key 登录覆盖为 `no`。
+- 部署后直接打印 Netcatty Keychain / Identity 配置提示。
+
 ## v1.2.0
 
 - 中文向导第一步新增“一键 DD / 重装 Ubuntu 24.04 Minimal”。
