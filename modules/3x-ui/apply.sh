@@ -17,12 +17,8 @@ xui_release_sha256() {
   esac
 }
 
-prepare_pinned_xui_installer() {
-  local installer="$1" commit="$2"
-
-  # The v3.8.5 annotated tag currently points at this reviewed commit. Fetch the
-  # installer and follow-up repository files by immutable commit, not by tag.
-  curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 60     "https://raw.githubusercontent.com/MHSanaei/3x-ui/${commit}/install.sh"     -o "$installer" || die "下载固定提交的 3x-ui 安装脚本失败。"
+patch_pinned_xui_installer() {
+  local installer="$1"
 
   # The pinned upstream installer already validates the release sidecar. Add a
   # second, project-owned digest check and force x-ui.sh/service-file downloads
@@ -59,6 +55,18 @@ PY
 
   grep -q 'Project-pinned checksum mismatch' "$installer" || die "3x-ui 安装脚本完整性补丁未成功写入。"
   grep -q 'VPSINIT_XUI_SCRIPT_REF' "$installer" || die "3x-ui 固定提交补丁未成功写入。"
+}
+
+prepare_pinned_xui_installer() {
+  local installer="$1" commit="$2"
+
+  # The v3.8.5 annotated tag currently points at this reviewed commit. Fetch the
+  # installer and follow-up repository files by immutable commit, not by tag.
+  curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 60 \
+    "https://raw.githubusercontent.com/MHSanaei/3x-ui/${commit}/install.sh" \
+    -o "$installer" || die "下载固定提交的 3x-ui 安装脚本失败。"
+
+  patch_pinned_xui_installer "$installer"
   chmod 700 "$installer"
 }
 
