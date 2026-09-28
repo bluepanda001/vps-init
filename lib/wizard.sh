@@ -214,7 +214,43 @@ wizard_collect_ssh_key() {
   if [[ -n "$existing_any" && "$existing_any" != "$existing_vps_main" ]]; then
     options+=("使用服务器当前已有 ED25519 公钥（兼容旧配置，不推荐作为统一方案）")
   fi
-  choice="$(wizard_select 
+
+  choice="$(wizard_select "SSH 公钥（标准方案：一把 vps-main + 每台 VPS 一个 Netcatty Identity）：" "${options[@]}")"
+
+  if [[ "$choice" == 2 ]]; then
+    cat <<'EOF2'
+
+请在你自己的 Windows PowerShell 另开窗口执行：
+
+ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\vps-main-ed25519" -C "vps-main"
+Get-Content "$env:USERPROFILE\.ssh\vps-main-ed25519.pub" | Set-Clipboard
+
+生成后，把无 .pub 后缀的私钥导入 Netcatty Keychain，Label 固定为 vps-main。
+私钥只保存在 Windows / Netcatty Keychain，绝对不要上传到 VPS、GitHub 或聊天。
+EOF2
+  elif [[ "$choice" == 3 && -n "$existing_any" ]]; then
+    W_SSH_PUBLIC_KEY="$existing_any"
+    W_SSH_IDENTITY_HINT=""
+    return 0
+  fi
+
+  while true; do
+    read -r -p "现在粘贴完整 ssh-ed25519 公钥: " pasted
+    if [[ "$pasted" == ssh-ed25519\ * ]]; then
+      local tmp
+      tmp="$(mktemp)"
+      printf '%s\n' "$pasted" > "$tmp"
+      if ssh-keygen -l -f "$tmp" >/dev/null 2>&1; then
+        rm -f "$tmp"
+        W_SSH_PUBLIC_KEY="$pasted"
+        return 0
+      fi
+      rm -f "$tmp"
+    fi
+    echo "这不是可解析的 ssh-ed25519 公钥，请重新粘贴。"
+  done
+}
+
 wizard_collect() {
   require_root
   [[ -t 0 ]] || die "交互向导需要 TTY。"
