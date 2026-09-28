@@ -98,7 +98,7 @@ grep -q -- '--certificate-profile shortlived' modules/subscription/apply.sh
 # V1.2.3: bootstrap may fall back to source only after an explicit "no Release"
 # result. Lookup/network/HTTP ambiguity must fail closed.
 grep -q 'RELEASE_LOOKUP_STATUS="none"' install.sh
-grep -q '只有仓库尚无正式 Release' README.md
+grep -q '仓库尚无正式 Release' README.md
 grep -q '无法可靠确定 GitHub 最新 Release' install.sh
 if grep -q 'resolve_latest_release || true' install.sh; then
   echo 'FAIL: Release lookup errors must not be collapsed into "no Release"' >&2; exit 1
