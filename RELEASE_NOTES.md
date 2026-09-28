@@ -1,5 +1,14 @@
 # Release Notes
 
+## v1.2.3
+
+- Bootstrap 的 Release 探测改为 fail-closed：只有 GitHub 明确返回“没有正式 Release”时才允许首次发布前源码回退；网络/HTTP/重定向异常不再被误判为“无 Release”。
+- 一键 DD 会保留 root 的全部唯一 ED25519 公钥，并把 `vps-main` 优先传给固定版本的 `bin456789/reinstall`。
+- Reality Only 的 short-lived IP 证书续期从 best-effort 改为强校验：确保 `cron` active、`acme.sh --install-cronjob` 成功，并确认 root crontab 中存在 `acme.sh --cron`。
+- Release 打包与持久化复制排除 `__pycache__`、`*.pyc`、`*.pyo`。
+- 3x-ui v3.8.5 的安装器/仓库脚本固定到 commit `7ef22f94c950ff09f0870e2295fa65ad5968742c`，release archive 同时使用项目内置 SHA256 再校验一次。
+- 增加对应 self-test 回归检查，防止这些部署安全路径以后退化。
+
 ## v1.2.2
 
 - SSH 管理统一为一把 `vps-main`：Windows 私钥固定建议为 `vps-main-ed25519`，所有普通 VPS 复用同一个公钥。
