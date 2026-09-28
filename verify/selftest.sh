@@ -60,10 +60,20 @@ fi
 if grep -R --include='*.sh' --exclude='selftest.sh' -E 'chmod[[:space:]]+(-R[[:space:]]+)?777' . >/dev/null; then
   echo 'FAIL: chmod 777 found' >&2; exit 1
 fi
-# Safety regressions fixed in V1.2.1.
+# Safety regressions fixed in V1.2.1/V1.2.2.
 grep -q 'systemctl daemon-reload' core/ssh.sh
 grep -q 'systemctl restart ssh.socket' core/ssh.sh
 grep -q 'SSH_VERIFIED_PORT' core/ssh.sh
+grep -q '00-00-vps-init.conf' core/ssh.sh
+grep -q 'verify_root_key_policy' core/ssh.sh
+grep -q 'PermitRootLogin prohibit-password' core/ssh.sh
+grep -q 'vps-main-ed25519' core/ssh.sh
+grep -q 'Netcatty 统一 SSH 规范' core/ssh.sh
+grep -q 'vps-main-ed25519' lib/wizard.sh
+grep -q '每台 VPS 单独 Identity' core/ssh.sh
+if grep -q 'id_ed25519_.*provider' lib/wizard.sh; then
+  echo 'FAIL: wizard must not generate one SSH private key per VPS/provider' >&2; exit 1
+fi
 grep -q 'SSH IPv4 listener on' verify/verify.sh
 if grep -q 'ufw --force reset' core/firewall.sh; then
   echo 'FAIL: firewall apply must preserve non-vps-init rules' >&2; exit 1
