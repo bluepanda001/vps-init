@@ -65,6 +65,11 @@ wizard_existing_ed25519_key() {
   awk '$1=="ssh-ed25519" {print; exit}' /root/.ssh/authorized_keys
 }
 
+wizard_existing_vps_main_key() {
+  [[ -r /root/.ssh/authorized_keys ]] || return 1
+  awk '$1=="ssh-ed25519" && $0 ~ /[[:space:]]vps-main$/ {print; exit}' /root/.ssh/authorized_keys
+}
+
 wizard_offer_reinstall() {
   # Destructive reinstall is pinned to a reviewed upstream commit.
   local reinstall_repo="bin456789/reinstall"
@@ -187,44 +192,175 @@ EOF2
 }
 
 wizard_collect_ssh_key() {
-  W_SSH_IDENTITY_HINT=""
-  local existing choice provider_slug ipcompact keyname pasted
-  existing="$(wizard_existing_ed25519_key || true)"
-  if [[ -n "$existing" ]]; then
+  W_SSH_IDENTITY_HINT="vps-main-ed25519"
+  local existing_vps_main existing_any choice pasted
+  existing_vps_main="$(wizard_existing_vps_main_key || true)"
+  existing_any="$(wizard_existing_ed25519_key || true)"
+
+  if [[ -n "$existing_vps_main" ]]; then
     echo
-    echo "检测到 root 已有 ED25519 authorized_keys："
-    ssh-keygen -lf <(printf '%s\n' "$existing") 2>/dev/null || true
-    if wizard_yesno "直接使用现有公钥？" y; then
-      W_SSH_PUBLIC_KEY="$existing"
+    echo "检测到 root 已经安装统一 vps-main 公钥："
+    ssh-keygen -lf <(printf '%s\n' "$existing_vps_main") 2>/dev/null || true
+    if wizard_yesno "继续使用这把 vps-main？" y; then
+      W_SSH_PUBLIC_KEY="$existing_vps_main"
       return 0
     fi
   fi
 
-  choice="$(wizard_select $'SSH 公钥：\n  推荐使用 ED25519。' \
-    "粘贴已有 ssh-ed25519 公钥" \
-    "显示 Windows PowerShell 生成命令，然后回来粘贴")"
+  local -a options=(
+    "粘贴现有 vps-main 的 ssh-ed25519 公钥（推荐：所有普通 VPS 共用）"
+    "第一次创建 vps-main：显示 Windows PowerShell 命令，然后回来粘贴"
+  )
+  if [[ -n "$existing_any" && "$existing_any" != "$existing_vps_main" ]]; then
+    options+=("使用服务器当前已有 ED25519 公钥（兼容旧配置，不推荐作为统一方案）")
+  fi
+  choice="$(wizard_select 
+wizard_collect() {
+  require_root
+  [[ -t 0 ]] || die "交互向导需要 TTY。"
+  if ! command_exists curl; then
+    wait_apt_lock 300
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl ca-certificates
+  fi
+  wizard_banner
+  echo
+
+  # First decision: optionally reinstall to a known-clean Ubuntu before
+  # collecting any VPS Init settings.
+  wizard_offer_reinstall
+
+  local mode_choice profile_choice current_port custom="false"
+  mode_choice="$(wizard_select "安装方式：" "快速安装（推荐，只问必要项目）" "自定义安装")"
+  [[ "$mode_choice" == 2 ]] && custom="true"
+
+  profile_choice="$(wizard_select "请选择部署模式：" \
+    "Base Only - 系统初始化/安全/BBR/Swap，不安装 3x-ui" \
+    "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
+    "Nginx + Reality - Nginx Stream 443 分流，需要 Cloudflare 域名" \
+    "Lucky + Reality - Reality 占 443，HTTPS fallback 到 Lucky，需要 Cloudflare 域名")"
+  case "$profile_choice" in
+    1) W_PROFILE="base-only" ;;
+    2) W_PROFILE="reality-only" ;;
+    3) W_PROFILE="nginx-reality" ;;
+    4) W_PROFILE="lucky-reality" ;;
+  esac
+  state_load
+  if [[ -n "${DEPLOYED_PROFILE:-}" && "$DEPLOYED_PROFILE" != "$W_PROFILE" ]]; then
+    echo "这台 VPS 已部署 Profile=${DEPLOYED_PROFILE}。"
+    echo "为避免改变 443/TLS 拓扑，向导不会把它自动切换为 ${W_PROFILE}。"
+    echo "如需换 Profile，建议新 VPS 或按 RUNBOOK 手工迁移。"
+    return 11
+  fi
+
+  W_SERVER_IP="$(get_public_ipv4 || true)"
+  [[ -n "$W_SERVER_IP" ]] || die "无法检测公网 IPv4。"
+  echo
+  echo "检测到公网 IPv4：$W_SERVER_IP"
+
+  W_PROVIDER="$(wizard_prompt_default "VPS 服务商（用于名称/报告，例如 racknerd、vmiss）" "vps")"
+  W_SERVER_NAME="$(wizard_prompt_default "这台 VPS 的名称（同时建议作为 Netcatty Identity 名称）" "${W_PROVIDER}-${W_SERVER_IP}")"
+  current_port="$(wizard_detect_ssh_port)"
+  if [[ "$custom" == true ]]; then
+    W_SSH_PORT="$(wizard_prompt_default "SSH 端口" "$current_port")"
+  else
+    W_SSH_PORT="$current_port"
+    echo "SSH 端口：$W_SSH_PORT（沿用当前连接）"
+  fi
+  [[ "$W_SSH_PORT" =~ ^[0-9]+$ ]] && ((W_SSH_PORT>=1 && W_SSH_PORT<=65535)) || die "SSH 端口无效。"
+  wizard_collect_ssh_key
+
+  W_ROOT_DOMAIN=""; W_LE_EMAIL=""
+  if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
+    echo
+    while [[ -z "$W_ROOT_DOMAIN" ]]; do
+      W_ROOT_DOMAIN="$(wizard_prompt_default "Cloudflare 根域名（例如 example.com）" "")"
+      [[ "$W_ROOT_DOMAIN" != *://* && "$W_ROOT_DOMAIN" != */* && "$W_ROOT_DOMAIN" == *.* ]] || { echo "请只填写根域名，不要带 https:// 或路径。"; W_ROOT_DOMAIN=""; }
+    done
+    W_LE_EMAIL="$(wizard_prompt_default "Let's Encrypt 邮箱（可留空）" "")"
+  fi
+
+  W_REALITY_TARGET_MODE="auto"; W_REALITY_TARGET=""
+  if [[ "$W_PROFILE" != "base-only" && "$custom" == true ]]; then
+    local target_choice
+    target_choice="$(wizard_select "Reality Target：" "自动检测并推荐（推荐）" "手动填写")"
+    if [[ "$target_choice" == 2 ]]; then
+      W_REALITY_TARGET_MODE="manual"
+      while [[ -z "$W_REALITY_TARGET" ]]; do W_REALITY_TARGET="$(wizard_prompt_default "Reality Target，例如 www.microsoft.com:443" "")"; done
+    fi
+  fi
+
+  W_PANEL_PATH="/zhg/"
+  W_SUB_PATH="/zhg/"
+  W_SUBSCRIPTION_PORT="2096"
+  W_ENABLE_DOCKER="false"
+  if [[ "$custom" == true && "$W_PROFILE" != "base-only" ]]; then
+    W_PANEL_PATH="$(normalize_path "$(wizard_prompt_default "3x-ui 面板 URI Path" "/zhg/")")"
+    local sub_input
+    sub_input="$(wizard_prompt_default "订阅 URI Path" "/zhg/")"
+    W_SUB_PATH="$(normalize_path "$sub_input")"
+    W_SUBSCRIPTION_PORT="$(wizard_prompt_default "3x-ui Subscription 内部/直连端口" "2096")"
+    [[ "$W_SUBSCRIPTION_PORT" =~ ^[0-9]+$ ]] && ((W_SUBSCRIPTION_PORT>=1 && W_SUBSCRIPTION_PORT<=65535)) || die "订阅端口无效。"
+  fi
+  if [[ "$custom" == true ]]; then
+    if wizard_yesno "同时安装 Docker Engine/Compose？" n; then W_ENABLE_DOCKER="true"; fi
+  fi
+
+  echo
+  echo "---------------- 部署摘要 ----------------"
+  echo "Profile           : $W_PROFILE"
+  echo "IPv4              : $W_SERVER_IP"
+  echo "SSH Port          : $W_SSH_PORT"
+  [[ -n "$W_ROOT_DOMAIN" ]] && echo "Root Domain       : $W_ROOT_DOMAIN"
+  if [[ "$W_PROFILE" != "base-only" ]]; then
+    echo "Panel URI         : $W_PANEL_PATH"
+    echo "Subscription URI  : $W_SUB_PATH"
+    echo "Subscription Port : $W_SUBSCRIPTION_PORT"
+    echo "Reality Target    : ${W_REALITY_TARGET_MODE}${W_REALITY_TARGET:+ ($W_REALITY_TARGET)}"
+    echo "Clash/Mihomo      : ON / Routing ON / Auto Detect ON / (?i)(clash|mihomo)"
+  fi
+  echo "Docker            : $W_ENABLE_DOCKER"
+  echo "------------------------------------------"
+  wizard_yesno "确认并开始部署？" y || return 10
+}
+
+wizard_run() {
+  local cfg="${1:-$PERSIST_DIR/config.env}"
+  ensure_dir "$(dirname "$cfg")"
+  wizard_collect || return $?
+  wizard_write_config "$cfg"
+  log_ok "配置已生成：$cfg"
+  "$ROOT_DIR/vps-init" apply "$cfg"
+}
+SSH 公钥：\n  标准方案：一把 vps-main + 每台 VPS 一个 Netcatty Identity。' "${options[@]}")"
+
   if [[ "$choice" == 2 ]]; then
-    provider_slug="$(printf '%s' "${W_PROVIDER:-vps}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')"
-    [[ -n "$provider_slug" ]] || provider_slug="vps"
-    ipcompact="${W_SERVER_IP//./}"
-    keyname="id_ed25519_${provider_slug}_${ipcompact}"
-    W_SSH_IDENTITY_HINT="$keyname"
-    cat <<EOF2
+    cat <<'EOF2'
 
 请在你自己的 Windows PowerShell 另开窗口执行：
 
-ssh-keygen -t ed25519 -f "\$env:USERPROFILE\\.ssh\\${keyname}" -C "${provider_slug}-${W_SERVER_IP}"
-Get-Content "\$env:USERPROFILE\\.ssh\\${keyname}.pub" | Set-Clipboard
+ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\vps-main-ed25519" -C "vps-main"
+Get-Content "$env:USERPROFILE\.ssh\vps-main-ed25519.pub" | Set-Clipboard
 
-只需要复制 .pub 公钥，绝对不要上传私钥。
+生成后，把无 .pub 后缀的私钥导入 Netcatty Keychain，Label 固定为 vps-main。
+私钥只保存在 Windows / Netcatty Keychain，绝对不要上传到 VPS、GitHub 或聊天。
 EOF2
+  elif [[ "$choice" == 3 && -n "$existing_any" ]]; then
+    W_SSH_PUBLIC_KEY="$existing_any"
+    W_SSH_IDENTITY_HINT=""
+    return 0
   fi
+
   while true; do
     read -r -p "现在粘贴完整 ssh-ed25519 公钥: " pasted
     if [[ "$pasted" == ssh-ed25519\ * ]]; then
       local tmp
       tmp="$(mktemp)"; printf '%s\n' "$pasted" > "$tmp"
-      if ssh-keygen -l -f "$tmp" >/dev/null 2>&1; then rm -f "$tmp"; W_SSH_PUBLIC_KEY="$pasted"; return 0; fi
+      if ssh-keygen -l -f "$tmp" >/dev/null 2>&1; then
+        rm -f "$tmp"
+        W_SSH_PUBLIC_KEY="$pasted"
+        return 0
+      fi
       rm -f "$tmp"
     fi
     echo "这不是可解析的 ssh-ed25519 公钥，请重新粘贴。"
