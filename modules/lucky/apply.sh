@@ -62,12 +62,22 @@ UNIT
 
   state_load
   if [[ -z "${LUCKY_USERNAME:-}" || -z "${LUCKY_PASSWORD:-}" ]]; then
-    local nu np
-    nu="lucky_$(random_hex 3)"; np="$(random_b64url 36 28)"
-    python3 "$ROOT_DIR/modules/lucky/lucky_api.py" --user 666 --password 666 set-admin --new-user "$nu" --new-password "$np" >/dev/null
-    LUCKY_USERNAME="$nu"; LUCKY_PASSWORD="$np"
-    state_set LUCKY_USERNAME "$LUCKY_USERNAME"; state_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
+    LUCKY_USERNAME="lucky_$(random_hex 3)"
+    LUCKY_PASSWORD="$(random_b64url 36 28)"
+    state_set LUCKY_USERNAME "$LUCKY_USERNAME"
+    state_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
   fi
+
+  # Do not assume Lucky's upstream default credential. The running service uses
+  # /opt/lucky/lucky.conf as its source of truth; bootstrap from the actual
+  # root-only credential stored there and rotate/reconcile it to our persisted
+  # random credential. This also makes a rerun recover from a pre-existing
+  # Lucky config whose admin pair is not 666/666.
+  python3 "$ROOT_DIR/modules/lucky/lucky_api.py" ensure-admin \
+    --config /opt/lucky/lucky.conf \
+    --new-user "$LUCKY_USERNAME" \
+    --new-password "$LUCKY_PASSWORD" >/dev/null ||     die "无法根据 /opt/lucky/lucky.conf 接管 Lucky 管理账号。"
+  chmod 600 /opt/lucky/lucky.conf
   secret_set LUCKY_USERNAME "$LUCKY_USERNAME"; secret_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
   secret_set LUCKY_LOCAL_URL "http://127.0.0.1:16601"
 
