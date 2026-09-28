@@ -87,7 +87,7 @@ secret_set() {
 copy_project_persistent() {
   ensure_dir "$PERSIST_DIR"
   if [[ "$(readlink -f "$ROOT_DIR")" != "$(readlink -f "$PERSIST_DIR")" ]]; then
-    tar -C "$ROOT_DIR" --exclude='.git' --exclude='config.env' --exclude='__pycache__' -cf - . | tar -C "$PERSIST_DIR" -xf -
+    tar -C "$ROOT_DIR" --exclude='.git' --exclude='config.env' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' -cf - . | tar -C "$PERSIST_DIR" -xf -
   fi
   chmod +x "$PERSIST_DIR/vps-init" 2>/dev/null || true
 }

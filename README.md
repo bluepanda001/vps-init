@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.2.2 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
+V1.2.3 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
 
 ## 一键安装
 
@@ -18,7 +18,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/bluepanda001/vps-init/main/i
 curl -fsSL https://raw.githubusercontent.com/bluepanda001/vps-init/main/install.sh | bash
 ```
 
-Bootstrap 会优先下载 GitHub 最新 Release、校验 `SHA256SUMS`。如果已经存在 Release，但下载或校验失败，会直接停止，不再静默回退到未校验的 `main`；只有仓库尚无任何 Release 的首次发布阶段，才允许回退源码归档。安装到 `/opt/vps-init`，并创建：
+Bootstrap 会先通过 GitHub 的 `/releases/latest` 网页重定向判断是否存在正式 Release，再下载并校验 `SHA256SUMS`。**只有 GitHub 明确返回 404（仓库尚无正式 Release）时才允许首次发布前回退源码归档**；DNS/TLS/网络失败、403/429/5xx、异常重定向、Release 下载失败或 SHA256 校验失败都会直接停止，不会把“探测失败”误判成“没有 Release”。安装到 `/opt/vps-init`，并创建：
 
 ```text
 /usr/local/bin/vps-init
@@ -40,7 +40,7 @@ vps-init
   2. 一键 DD / 重装 Ubuntu 24.04 Minimal（bin456789/reinstall）
 ```
 
-选 2 时会调用我们之前使用过的 `bin456789/reinstall`，并固定到上游提交 `2bcbc96100fe733bf9a16d609f799246f62666e5`。它会在真正执行前再次要求输入大写 `DD`；重启前仍可用 `bash /root/reinstall.sh reset` 取消。OpenVZ/LXC 会直接拒绝执行。
+选 2 时会调用我们之前使用过的 `bin456789/reinstall`，并固定到上游提交 `2bcbc96100fe733bf9a16d609f799246f62666e5`。DD 前会读取 root 的全部普通 ED25519 `authorized_keys`、去重，并把 `vps-main` 排在最前后通过重复的 `--ssh-key` 全部传给重装脚本，避免旧钥匙排在第一行时把统一主密钥丢掉。它会在真正执行前再次要求输入大写 `DD`；重启前仍可用 `bash /root/reinstall.sh reset` 取消。OpenVZ/LXC 会直接拒绝执行。
 
 如果执行 DD：当前系统只负责准备重装环境；`reboot` 后才开始清盘安装 Ubuntu 24.04 Minimal。安装完成重新 SSH 登录后，再运行同一条 VPS Init 一键命令，并选择“不重装”。
 
@@ -69,7 +69,7 @@ vps-init
 | `nginx-reality` | Nginx Stream SNI 分流 | 必须 | Nginx HTTPS 反代 | Nginx 内部 TLS :8443 |
 | `lucky-reality` | 3x-ui 自带 Xray Reality | 必须 | Lucky HTTPS 反代 | Reality fallback → Lucky :8443 |
 
-3x-ui V1.2.2 固定使用 `v3.8.5`，只使用 **3x-ui 自带 Xray**，不会安装第二套独立 Xray。
+3x-ui V1.2.3 固定使用 `v3.8.5`，安装器及随后下载的仓库脚本固定到该签名 tag 当前对应的 commit `7ef22f94c950ff09f0870e2295fa65ad5968742c`；release archive 除上游 sidecar 外还会再按项目内置 SHA256 校验。只使用 **3x-ui 自带 Xray**，不会安装第二套独立 Xray。
 
 ## 3x-ui / Subscription 默认值
 
@@ -105,7 +105,7 @@ VPS_IP:2096  -> HTTPS Subscription
 
 如果 2096 在首次部署时已经被占用，脚本会自动选择一个空闲端口并持久保存。
 
-IP HTTPS 证书沿用 3x-ui v3.8.5 的 acme.sh short-lived 方案，80/tcp 用于 HTTP-01，但脚本直接调用 acme.sh，不再靠向 3x-ui 交互菜单连续喂回车。证书失败会停止，不降级为 HTTP，并启用 acme.sh 自动续期。
+IP HTTPS 证书沿用 3x-ui v3.8.5 的 acme.sh short-lived 方案，80/tcp 用于 HTTP-01，但脚本直接调用 acme.sh，不再靠向 3x-ui 交互菜单连续喂回车。证书失败会停止，不降级为 HTTP；部署还会确保 `cron` 已安装并运行、安装 acme.sh cronjob，并从 root crontab 中确认 `acme.sh --cron` 真实存在，之后才报告“自动续期已启用”。
 
 ## Nginx + Reality
 
@@ -257,14 +257,14 @@ vps-init update
 
 ## 发布 Release
 
-仓库包含 `.github/workflows/release.yml`。推送 `v1.1.0` 这样的 tag 后，GitHub Actions 会执行 self-test，生成：
+仓库包含 `.github/workflows/release.yml`。推送标准 tag，或创建与 `VERSION` 一致的 `release/vX.Y.Z` 分支后，GitHub Actions 会执行 self-test，生成：
 
 ```text
-vps-init-1.1.0.tar.gz
+vps-init-X.Y.Z.tar.gz
 SHA256SUMS
 ```
 
-并创建 GitHub Release。Bootstrap 优先使用该 Release 和 SHA256 校验；没有 Release 时才回退到源码 tarball。
+并创建 GitHub Release。打包时显式排除 `__pycache__`、`*.pyc`、`*.pyo`。Bootstrap 优先使用该 Release 和 SHA256 校验；只有 GitHub 明确确认仓库没有任何正式 Release 时才允许首次发布前回退源码 tarball。
 
 ## 当前边界
 

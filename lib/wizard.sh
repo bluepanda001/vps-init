@@ -60,22 +60,45 @@ wizard_detect_ssh_port() {
   printf '%s\n' "$p"
 }
 
+wizard_existing_ed25519_keys() {
+  [[ -r /root/.ssh/authorized_keys ]] || return 1
+  # Preserve every unique plain ED25519 key, but emit vps-main first so the
+  # unified key is guaranteed to survive an optional DD reinstall even when an
+  # older emergency key appears earlier in authorized_keys.
+  awk '
+    $1=="ssh-ed25519" && !seen[$0]++ {
+      if ($NF=="vps-main") main[++m]=$0
+      else other[++n]=$0
+    }
+    END {
+      for (i=1; i<=m; i++) print main[i]
+      for (i=1; i<=n; i++) print other[i]
+    }
+  ' /root/.ssh/authorized_keys
+}
+
 wizard_existing_ed25519_key() {
+  local vps_main
+  vps_main="$(wizard_existing_vps_main_key || true)"
+  if [[ -n "$vps_main" ]]; then
+    printf '%s\n' "$vps_main"
+    return 0
+  fi
   [[ -r /root/.ssh/authorized_keys ]] || return 1
   awk '$1=="ssh-ed25519" {print; exit}' /root/.ssh/authorized_keys
 }
 
 wizard_existing_vps_main_key() {
   [[ -r /root/.ssh/authorized_keys ]] || return 1
-  awk '$1=="ssh-ed25519" && $0 ~ /[[:space:]]vps-main$/ {print; exit}' /root/.ssh/authorized_keys
+  awk '$1=="ssh-ed25519" && $NF=="vps-main" {print; exit}' /root/.ssh/authorized_keys
 }
 
 wizard_offer_reinstall() {
   # Destructive reinstall is pinned to a reviewed upstream commit.
   local reinstall_repo="bin456789/reinstall"
   local reinstall_commit="2bcbc96100fe733bf9a16d609f799246f62666e5"
-  local choice virt confirm_word script current_port existing_key
-  local -a cmd
+  local choice virt confirm_word script current_port key
+  local -a cmd existing_keys
 
   echo
   choice="$(wizard_select "系统准备："     "不重装，直接初始化当前系统（推荐：系统已经是干净 Ubuntu 24.04 时选这个）"     "一键 DD / 重装 Ubuntu 24.04 Minimal（bin456789/reinstall）")"
@@ -110,13 +133,18 @@ wizard_offer_reinstall() {
   chmod 700 "$script"
 
   current_port="$(wizard_detect_ssh_port)"
-  existing_key="$(wizard_existing_ed25519_key || true)"
+  mapfile -t existing_keys < <(wizard_existing_ed25519_keys || true)
 
   cmd=(bash "$script" ubuntu 24.04 --minimal)
-  if [[ -n "$existing_key" ]]; then
+  if (( ${#existing_keys[@]} > 0 )); then
     echo
-    echo "检测到当前 root 的 ED25519 公钥。DD 后将继续使用这把公钥，避免重装后丢失 SSH 登录方式。"
-    cmd+=(--ssh-key "$existing_key" --ssh-port "$current_port")
+    echo "检测到当前 root 的 ${#existing_keys[@]} 把 ED25519 公钥。DD 后会全部保留；vps-main 会优先传入。"
+    # The pinned bin456789/reinstall commit appends repeated --ssh-key values
+    # into the target authorized_keys, so pass every unique ED25519 key.
+    for key in "${existing_keys[@]}"; do
+      cmd+=(--ssh-key "$key")
+    done
+    cmd+=(--ssh-port "$current_port")
   else
     echo
     echo "当前没有检测到 root 的 ED25519 authorized key。"
