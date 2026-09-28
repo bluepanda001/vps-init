@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'release/v*'
 
 permissions:
   contents: write
@@ -15,29 +17,70 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve release version
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+          elif [[ "$GITHUB_REF_TYPE" == "branch" && "$GITHUB_REF_NAME" =~ ^release/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            tag="${GITHUB_REF_NAME#release/}"
+          else
+            echo "Unsupported release ref: type=$GITHUB_REF_TYPE name=$GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Invalid release tag: $tag" >&2
+            exit 1
+          }
+
+          ver="${tag#v}"
+          file_ver="$(tr -d '[:space:]' < VERSION)"
+          [[ "$file_ver" == "$ver" ]] || {
+            echo "VERSION mismatch: VERSION=$file_ver release=$ver" >&2
+            exit 1
+          }
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+
       - name: Run self-test
         run: bash verify/selftest.sh
 
       - name: Build archive
         shell: bash
+        env:
+          RELEASE_VER: ${{ steps.release.outputs.ver }}
         run: |
           set -Eeuo pipefail
-          ver="${GITHUB_REF_NAME#v}"
           mkdir -p dist/stage/vps-init
           rsync -a \
             --exclude '.git' \
             --exclude 'dist' \
             --exclude 'config.env' \
             ./ dist/stage/vps-init/
-          tar -C dist/stage -czf "dist/vps-init-${ver}.tar.gz" vps-init
-          (cd dist && sha256sum "vps-init-${ver}.tar.gz" > SHA256SUMS)
+          tar -C dist/stage -czf "dist/vps-init-${RELEASE_VER}.tar.gz" vps-init
+          (cd dist && sha256sum "vps-init-${RELEASE_VER}.tar.gz" > SHA256SUMS)
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VER: ${{ steps.release.outputs.ver }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            "dist/vps-init-${GITHUB_REF_NAME#v}.tar.gz" \
+          set -Eeuo pipefail
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; nothing to do."
+            exit 0
+          fi
+
+          gh release create "$RELEASE_TAG" \
+            "dist/vps-init-${RELEASE_VER}.tar.gz" \
             dist/SHA256SUMS \
-            --title "$GITHUB_REF_NAME" \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_TAG" \
             --generate-notes
