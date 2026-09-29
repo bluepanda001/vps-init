@@ -228,7 +228,7 @@ with tempfile.TemporaryDirectory() as td:
 PY_LUCKY
 
 grep -q '拒绝回退' install.sh
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.4" ]]
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.5" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
