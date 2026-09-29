@@ -183,4 +183,17 @@ grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
 grep -q 'ubuntu 24.04 --minimal --user root' lib/wizard.sh
 grep -q '请输入大写 DD' lib/wizard.sh
 grep -q 'reinstall.sh reset' lib/wizard.sh
+
+# V1.2.5: wizard Profile migrations are transactional at the config-file level.
+grep -q 'config.env.pending' lib/wizard.sh
+grep -q '原有已验证配置未被候选配置覆盖' lib/wizard.sh
+python3 - <<'PY_CONFIG_TXN'
+from pathlib import Path
+s=Path("vps-init").read_text()
+assert 'resolve_runtime_ports\npersist_config "$cfg"\ncore_swap' not in s
+verify=s.index('if verify_all; then')
+persist=s.index('persist_config "$cfg"', verify)
+state=s.index('state_set DEPLOYED_PROFILE "$PROFILE"', verify)
+assert verify < persist < state
+PY_CONFIG_TXN
 echo 'SELFTEST_OK'
