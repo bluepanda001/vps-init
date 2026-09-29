@@ -64,23 +64,28 @@ UNIT
   fi
 
   # Lucky 2.27.2 stores its active configuration as encrypted/modular *.lkcf
-  # files. Use the vendor-supported offline setconf interface instead of
-  # parsing credentials or depending on a build-specific default account.
-  # Stop first so the running process cannot overwrite the edited config on exit.
-  systemctl stop lucky 2>/dev/null || true
-  /opt/lucky/lucky -setconf -key AdminAccount -value "$LUCKY_USERNAME" -cd /opt/lucky >/dev/null || \
-    die "Lucky CLI 无法写入管理账号。"
-  /opt/lucky/lucky -setconf -key AdminPassword -value "$LUCKY_PASSWORD" -cd /opt/lucky >/dev/null || \
-    die "Lucky CLI 无法写入管理密码。"
-  /opt/lucky/lucky -setconf -key AllowInternetaccess -value false -cd /opt/lucky >/dev/null || \
-    die "Lucky CLI 无法关闭后台公网访问。"
-
+  # files. Its documented runtime control command resets credentials to
+  # 666:666; do NOT pass -cd to runtime control commands. Then immediately
+  # rotate to project-managed random credentials through the authenticated API.
   systemctl start lucky
   for _ in $(seq 1 20); do curl -fsS --max-time 2 http://127.0.0.1:16601/version >/dev/null 2>&1 && break; sleep 1; done
   curl -fsS --max-time 3 http://127.0.0.1:16601/version >/dev/null || die "Lucky 后台未启动。"
+
+  if ! python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+      --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" status >/dev/null 2>&1; then
+    /opt/lucky/lucky -rUnlock >/dev/null 2>&1 || true
+    /opt/lucky/lucky -rResetUser >/dev/null || die "Lucky 官方运行时命令无法重置管理凭据。"
+    sleep 1
+    python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+      --user "666" --password "666" set-admin \
+      --new-user "$LUCKY_USERNAME" --new-password "$LUCKY_PASSWORD" >/dev/null || \
+      die "Lucky 默认凭据重置成功后，无法写入项目管理凭据。"
+    sleep 1
+  fi
+
   python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
     --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" status >/dev/null || \
-    die "Lucky CLI 写入后项目管理凭据仍无法登录。"
+    die "Lucky 项目管理凭据验证失败。"
 
   secret_set LUCKY_USERNAME "$LUCKY_USERNAME"; secret_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
   secret_set LUCKY_LOCAL_URL "http://127.0.0.1:16601"
