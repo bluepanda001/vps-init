@@ -38,9 +38,6 @@ module_lucky() {
     fi
     rm -rf "$tmp"
   fi
-  # Lucky v2.27.2 会在指定配置文件不存在时生成默认配置；空 JSON 文件反而会导致解析失败。
-  [[ -f /opt/lucky/lucky.conf && ! -s /opt/lucky/lucky.conf ]] && rm -f /opt/lucky/lucky.conf
-  [[ -f /opt/lucky/lucky.conf ]] && chmod 600 /opt/lucky/lucky.conf
   cat > /etc/systemd/system/lucky.service <<'UNIT'
 [Unit]
 Description=Lucky
@@ -48,7 +45,7 @@ After=network-online.target
 Wants=network-online.target
 [Service]
 Type=simple
-ExecStart=/opt/lucky/lucky -c /opt/lucky/lucky.conf
+ExecStart=/opt/lucky/lucky -cd /opt/lucky
 Restart=on-failure
 RestartSec=3
 WorkingDirectory=/opt/lucky
@@ -58,8 +55,6 @@ UNIT
   systemctl daemon-reload; systemctl enable --now lucky
   for _ in $(seq 1 20); do curl -fsS --max-time 2 http://127.0.0.1:16601/version >/dev/null 2>&1 && break; sleep 1; done
   curl -fsS --max-time 3 http://127.0.0.1:16601/version >/dev/null || die "Lucky 后台未启动。"
-  [[ -f /opt/lucky/lucky.conf ]] && chmod 600 /opt/lucky/lucky.conf
-
   state_load
   if [[ -z "${LUCKY_USERNAME:-}" || -z "${LUCKY_PASSWORD:-}" ]]; then
     LUCKY_USERNAME="lucky_$(random_hex 3)"
@@ -68,16 +63,20 @@ UNIT
     state_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
   fi
 
-  # Do not assume Lucky's upstream default credential. The running service uses
-  # /opt/lucky/lucky.conf as its source of truth; bootstrap from the actual
-  # root-only credential stored there and rotate/reconcile it to our persisted
-  # random credential. This also makes a rerun recover from a pre-existing
-  # Lucky config whose admin pair is not 666/666.
-  python3 "$ROOT_DIR/modules/lucky/lucky_api.py" ensure-admin \
-    --config /opt/lucky/lucky.conf \
-    --new-user "$LUCKY_USERNAME" \
-    --new-password "$LUCKY_PASSWORD" >/dev/null ||     die "无法根据 /opt/lucky/lucky.conf 接管 Lucky 管理账号。"
-  chmod 600 /opt/lucky/lucky.conf
+  # Lucky 2.27.2 的新配置格式保存在配置目录内的 *.lkcf 文件中，不能再把
+  # /opt/lucky/lucky.conf 当作可读 JSON。先尝试项目已持久化的随机凭据；
+  # 如果不可用，使用 Lucky 官方 CLI 将本机管理账号临时重置为 666/666，
+  # 随即通过 loopback API 旋转回项目随机凭据。16601 不会被 UFW 对公网放行。
+  if ! python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+      --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" status >/dev/null 2>&1; then
+    /opt/lucky/lucky -rResetUser -cd /opt/lucky >/dev/null 2>&1 || \
+      die "Lucky 官方 CLI 无法重置本机管理账号。"
+    sleep 1
+    python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+      --user 666 --password 666 set-admin \
+      --new-user "$LUCKY_USERNAME" --new-password "$LUCKY_PASSWORD" >/dev/null || \
+      die "Lucky 默认账号重置后仍无法旋转为项目随机凭据。"
+  fi
   secret_set LUCKY_USERNAME "$LUCKY_USERNAME"; secret_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
   secret_set LUCKY_LOCAL_URL "http://127.0.0.1:16601"
 
