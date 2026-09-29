@@ -185,6 +185,9 @@ grep -q '请输入大写 DD' lib/wizard.sh
 grep -q 'reinstall.sh reset' lib/wizard.sh
 
 # V1.2.5: wizard Profile migrations are transactional at the config-file level.
+grep -q '失败迁移残留：443 当前由 Xray 占用' vps-init
+grep -q '尝试自动恢复上一个已验证 Profile' lib/wizard.sh
+grep -q 'VPSINIT_ALLOW_PROFILE_SWITCH=1.*apply.*backup' lib/wizard.sh
 grep -q 'config.env.pending' lib/wizard.sh
 grep -q '原有已验证配置未被候选配置覆盖' lib/wizard.sh
 python3 - <<'PY_CONFIG_TXN'
