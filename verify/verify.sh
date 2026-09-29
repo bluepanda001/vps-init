@@ -130,10 +130,10 @@ verify_all() {
       echo "3x-ui panel listener: 127.0.0.1:${XUI_PANEL_PORT:-unknown}"
       echo "Reality target: ${REALITY_TARGET_SELECTED:-unknown}"
       echo "Reality SNI: ${REALITY_SERVER_NAME:-unknown}"
-      if [[ "$PROFILE" == "nginx-reality" ]]; then
+      if [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]]; then
         check "443 owned by nginx" bash -c "ss -H -ltnp 'sport = :443' | grep -i nginx >/dev/null"
         check "Reality internal 1443 listening" bash -c "ss -H -ltnp 'sport = :1443' | grep -i xray >/dev/null"
-      elif [[ "$PROFILE" == "reality-only" || "$PROFILE" == "lucky-reality" ]]; then
+      elif [[ "$PROFILE" == "reality-only" ]]; then
         check "443 owned by Xray" bash -c "ss -H -ltnp 'sport = :443' | grep -i xray >/dev/null"
       fi
       check "Reality end-to-end handshake" verify_reality_handshake
@@ -159,7 +159,7 @@ verify_all() {
     if profile_has_domain && profile_has_xui; then
       check "public HTTPS panel through 443" curl -fsS --max-time 10 --resolve "${PANEL_DOMAIN}:443:127.0.0.1" -o /dev/null "https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"
     fi
-    if [[ "$PROFILE" == nginx-reality ]]; then
+    if [[ "$PROFILE" == nginx-reality || "$PROFILE" == lucky-reality ]]; then
       check "nginx stream ssl_preread support" bash -c "nginx -V 2>&1 | grep -- '--with-stream_ssl_preread_module' >/dev/null"
       check "nginx syntax" nginx -t
       check "nginx active" systemctl is-active --quiet nginx
