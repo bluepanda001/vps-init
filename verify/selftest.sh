@@ -199,4 +199,10 @@ persist=s.index('persist_config "$cfg"', verify)
 state=s.index('state_set DEPLOYED_PROFILE "$PROFILE"', verify)
 assert verify < persist < state
 PY_CONFIG_TXN
+
+# V1.2.5: Lucky 2.27.2 current frontend requires an anti-replay nonce and
+# uses Lucky-Admin-Token instead of Authorization for authenticated API calls.
+grep -q 'def lucky_nonce' modules/lucky/lucky_api.py
+grep -q 'Lucky-Admin-Token' modules/lucky/lucky_api.py
+grep -q "'TwoFA':''" modules/lucky/lucky_api.py
 echo 'SELFTEST_OK'
