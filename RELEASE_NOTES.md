@@ -1,5 +1,16 @@
 # Release Notes
 
+## v1.2.5
+
+- 在真实 Ubuntu 24.04 RackNerd VPS 上完成四种 Profile 的完整回归：`base-only`、`reality-only`、`nginx-reality`、`lucky-reality` 均通过部署与验收，并覆盖幂等重跑；域名方案还完成了冷启动后的再次验收。
+- Reality 验收升级为真实端到端握手，并验证公网订阅、Mihomo/Clash YAML、订阅中公布的公网 Reality 端点以及公网 3x-ui 面板。
+- Reality 入站支持受控 Profile 迁移，并通过 3x-ui Host 显式登记真实公网端点，避免订阅泄露 loopback/内部监听地址。
+- Cloudflare Token 录入改为先验证 Zone 再落盘，支持账号级 Token，输入失败可重试，不会保存未验证凭据。
+- 向导和 Profile 切换改为事务式：配置只在完整验收成功后持久化；失败迁移会自动回滚并能识别/清理上次失败留下的拓扑残留。
+- 修复多处 `set -o pipefail` 下的 SSH/预检误判，并改进 DD 重启交接、向导返回路径和部署信息展示。
+- Lucky 2.27.2 不再按旧版明文配置处理管理员信息；使用官方运行时重置命令恢复本机管理入口，再通过 loopback API 立即轮换为项目随机凭据，并适配当前 nonce/token、证书和 WebService API。
+- 修正 `lucky-reality` 的 443 拓扑：不能依赖 REALITY 自身把普通 HTTPS fallback 到 Lucky；现统一使用 Nginx Stream `ssl_preread` 做最外层 SNI 分流，Reality 监听 `127.0.0.1:1443`，Lucky HTTPS 监听 `127.0.0.1:8443`。
+
 ## v1.2.4
 
 - 一键 DD 固定向 `bin456789/reinstall` 传入 `--user root`，避免无交互执行时停在 Username 提示并因 EOF 退出。
