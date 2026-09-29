@@ -31,7 +31,9 @@ verify_ssh_listener() {
 verify_root_key_policy() {
   local effective
   effective="$(sshd -T)"
-  grep -qi '^pubkeyauthentication yes    echo "当前 PermitRootLogin 实际值未进入 key-only 模式。可能有更早加载的 hardening drop-in 覆盖配置：" >&2
+  grep -qi '^pubkeyauthentication yes$' <<<"$effective" || die "PubkeyAuthentication 未实际生效为 yes。"
+  if ! grep -Eqi '^permitrootlogin (prohibit-password|without-password)$' <<<"$effective"; then
+    echo "当前 PermitRootLogin 实际值未进入 key-only 模式。可能有更早加载的 hardening drop-in 覆盖配置：" >&2
     grep -RniE '^[[:space:]]*(PermitRootLogin|PubkeyAuthentication)[[:space:]]+' \
       /etc/ssh/sshd_config /etc/ssh/sshd_config.d /usr/lib/ssh/sshd_config.d 2>/dev/null >&2 || true
     die "PermitRootLogin 未进入 key-only 模式；当前会话不要关闭。"
@@ -75,7 +77,8 @@ EOF2
   verify_root_key_policy
   local effective
   effective="$(sshd -T)"
-  grep -qi '^passwordauthentication no}
+  grep -qi '^passwordauthentication no$' <<<"$effective" || die "PasswordAuthentication 未成功关闭。"
+}
 
 show_netcatty_identity_hint() {
   local identity_name
