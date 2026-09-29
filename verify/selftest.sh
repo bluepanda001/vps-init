@@ -158,74 +158,19 @@ fi
 # V1.2.4: DD must be fully non-interactive for the target Linux username.
 grep -Fq 'cmd=(bash "$script" ubuntu 24.04 --minimal --user root)' lib/wizard.sh
 
-# V1.2.4: Lucky must bootstrap from its actual root-only config instead of
-# assuming upstream default credentials.
-grep -q 'ensure-admin' modules/lucky/apply.sh
-grep -q -- '--config /opt/lucky/lucky.conf' modules/lucky/apply.sh
-grep -q 'load_local_admin' modules/lucky/lucky_api.py
-if grep -q -- '--user 666 --password 666' modules/lucky/apply.sh; then
-  echo 'FAIL: Lucky automation must not assume 666/666' >&2; exit 1
+# V1.2.5: Lucky 2.27.2 uses a modular encrypted *.lkcf config directory.
+# Bootstrap must use the vendor-supported local reset CLI, then immediately
+# rotate 666/666 through the loopback API to the persisted random credentials.
+grep -q 'ExecStart=/opt/lucky/lucky -cd /opt/lucky' modules/lucky/apply.sh
+grep -q -- '-rResetUser -cd /opt/lucky' modules/lucky/apply.sh
+grep -q -- '--user 666 --password 666 set-admin' modules/lucky/apply.sh
+grep -q 'AllowInternetaccess.*False' modules/lucky/lucky_api.py
+if grep -q '/opt/lucky/lucky.conf' modules/lucky/apply.sh; then
+  echo 'FAIL: Lucky 2.27.2 must not treat lucky.conf as plaintext config' >&2; exit 1
 fi
-
-python3 - <<'PY_LUCKY'
-import importlib.util
-import json
-import tempfile
-from pathlib import Path
-
-spec = importlib.util.spec_from_file_location("lucky_api", "modules/lucky/lucky_api.py")
-mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
-
-with tempfile.TemporaryDirectory() as td:
-    cfg = Path(td) / "lucky.conf"
-    cfg.write_text(json.dumps({
-        "BaseConfigure": {
-            "AdminAccount": "existing-admin",
-            "AdminPassword": "existing-password"
-        }
-    }))
-
-    assert mod.load_local_admin(cfg) == ("existing-admin", "existing-password")
-
-    state = {"rotated": False}
-    put_bodies = []
-
-    def fake_login(base, user, password):
-        if (user, password) == ("managed-admin", "managed-password"):
-            if state["rotated"]:
-                return "managed-token"
-            raise RuntimeError("not rotated yet")
-        if (user, password) == ("existing-admin", "existing-password"):
-            return "old-token"
-        raise RuntimeError("bad credential")
-
-    def fake_request(base, method, path, token="", body=None, query=None):
-        if method == "GET" and path == "/api/baseconfigure":
-            assert token == "old-token"
-            return {"baseconfigure": {
-                "AdminAccount": "existing-admin",
-                "AdminPassword": "existing-password",
-                "AllowInternetaccess": True,
-                "AdminWebListenPort": 16601
-            }}
-        if method == "PUT" and path == "/api/baseconfigure":
-            assert token == "old-token"
-            assert body["AdminAccount"] == "managed-admin"
-            assert body["AdminPassword"] == "managed-password"
-            assert body["AllowInternetaccess"] is False
-            put_bodies.append(body)
-            state["rotated"] = True
-            return {"ret": 0}
-        raise AssertionError((method, path, token))
-
-    mod.login = fake_login
-    mod.request = fake_request
-    assert mod.ensure_admin("http://127.0.0.1:16601", cfg, "managed-admin", "managed-password") is True
-    assert len(put_bodies) == 1
-    assert mod.ensure_admin("http://127.0.0.1:16601", cfg, "managed-admin", "managed-password") is False
-    assert len(put_bodies) == 1
-PY_LUCKY
+if grep -q 'load_local_admin\|ensure-admin' modules/lucky/lucky_api.py modules/lucky/apply.sh; then
+  echo 'FAIL: obsolete Lucky plaintext-config bootstrap remains' >&2; exit 1
+fi
 
 grep -q '拒绝回退' install.sh
 [[ "$(tr -d '[:space:]' < VERSION)" == "1.2.5" ]]
