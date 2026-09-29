@@ -4,6 +4,9 @@ core_preflight() {
   local had_state=false
   [[ -f "$STATE_FILE" ]] && had_state=true
   [[ -r /etc/os-release ]] || die "无法读取 /etc/os-release。"
+  # /etc/os-release defines VERSION too. Keep those names local so sourcing it
+  # cannot overwrite the project's global VERSION used for DEPLOYED_VERSION.
+  local ID="" VERSION_ID="" PRETTY_NAME="" VERSION=""
   # shellcheck disable=SC1091
   source /etc/os-release
   [[ "${ID:-}" == "ubuntu" ]] || die "V1 仅支持 Ubuntu 24.04 LTS；当前: ${PRETTY_NAME:-unknown}"
@@ -61,7 +64,7 @@ core_preflight() {
         die "为保护现有 VPS 配置，已停止。建议在全新 Ubuntu 24.04 VPS 上使用。"
       fi
     fi
-    if command_exists ufw && ufw status 2>/dev/null | grep -q '^Status: active'; then
+    if command_exists ufw && ufw status 2>/dev/null | grep '^Status: active' >/dev/null; then
       log_warn "检测到已有 UFW 规则。apply 会保留人工规则，只刷新带 vps-init 注释的项目规则，并设置默认入站/出站策略。"
       if ! confirm "允许 vps-init 管理自己的 UFW 规则并设置默认策略？" n; then
         die "未授权修改 UFW，已停止。"
