@@ -313,7 +313,6 @@ core_preflight
 core_ssh
 core_system
 resolve_runtime_ports
-persist_config "$cfg"
 core_swap
 core_network
 core_firewall
@@ -338,12 +337,12 @@ if profile_has_xui; then
 fi
 
 copy_project_persistent
-persist_config "$cfg"
 
 echo >> "$SECRETS_FILE" 2>/dev/null || true
 chmod 600 "$SECRETS_FILE" 2>/dev/null || true
 
 if verify_all; then
+  persist_config "$cfg"
   state_set DEPLOYED_PROFILE "$PROFILE"
   state_set DEPLOYED_VERSION "$VERSION"
   state_set DEPLOYMENT_VERIFIED_AT "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
