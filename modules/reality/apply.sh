@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 module_reality() {
   state_load
-  local listen port fallback=""
+  local listen port
   case "$PROFILE" in
     reality-only) listen="0.0.0.0"; port=443 ;;
-    nginx-reality) listen="127.0.0.1"; port=1443 ;;
-    lucky-reality) listen="0.0.0.0"; port=443; fallback="127.0.0.1:8443" ;;
+    nginx-reality|lucky-reality) listen="127.0.0.1"; port=1443 ;;
     *) return 0 ;;
   esac
 
@@ -69,7 +68,7 @@ module_reality() {
 
   out=$(python3 "$ROOT_DIR/modules/3x-ui/xui_api.py" --base "$api" --token "$XUI_API_TOKEN" create-reality \
     --remark VPSINIT-Reality --listen "$listen" --port "$port" --email "$email" --sub-id "$SUB_ID" --short-id "$short" \
-    --target-mode "$target_mode" --target "$target_value" --candidates "$REALITY_CANDIDATES" --fallback "$fallback")
+    --target-mode "$target_mode" --target "$target_value" --candidates "$REALITY_CANDIDATES")
 
   REALITY_TARGET_SELECTED="$(jq -r '.target // empty' <<<"$out")"
   REALITY_SERVER_NAME="$(jq -r '.serverName // empty' <<<"$out")"
