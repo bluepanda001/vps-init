@@ -52,7 +52,12 @@ def sync_cert(base,token,cert,key,remark='vps-init-wildcard'):
       if isinstance(row,dict) and row.get('Remark')==remark and row.get('Key'):
         request(base,'DELETE','/api/ssl',token,query={'key':row['Key']})
     cert_b64=base64.b64encode(Path(cert).read_bytes()).decode(); key_b64=base64.b64encode(Path(key).read_bytes()).decode()
-    request(base,'POST','/api/ssl',token,body={'Key':'','Enable':True,'Remark':remark,'CertBase64':cert_b64,'KeyBase64':key_b64,'AddTime':''})
+    request(base,'POST','/api/ssl',token,body={
+      'Key':'','MappingToPath':False,'MappingPath':'','MappingChangeScript':'',
+      'Enable':True,'Remark':remark,'CertBase64':cert_b64,'KeyBase64':key_b64,
+      'IssuerCertificate':'','AddFrom':'file','ExtParams':{},
+      'AllSyncClient':False,'SyncClientList':[]
+    })
 
 def configure_rule(base,token,panel_domain,node_domain,panel_port,sub_port,landing_port):
     name='vps-init-https'
