@@ -64,7 +64,7 @@ UNIT
   fi
 
   # Lucky 2.27.2 的新配置格式保存在配置目录内的 *.lkcf 文件中，不能再把
-  # /opt/lucky/lucky.conf 当作可读 JSON。先尝试项目已持久化的随机凭据；
+  # 旧版单文件配置路径不能再当作可读 JSON。先尝试项目已持久化的随机凭据；
   # 如果不可用，使用 Lucky 官方 CLI 将本机管理账号临时重置为 666/666，
   # 随即通过 loopback API 旋转回项目随机凭据。16601 不会被 UFW 对公网放行。
   if ! python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
