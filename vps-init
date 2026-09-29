@@ -68,33 +68,43 @@ load_runtime_config() {
 }
 
 prepare_profile_transition() {
-  [[ -n "${PREVIOUS_DEPLOYED_PROFILE:-}" && "$PREVIOUS_DEPLOYED_PROFILE" != "$PROFILE" ]] || return 0
-  [[ "${VPSINIT_ALLOW_PROFILE_SWITCH:-0}" == "1" ]] || die "Profile 切换未获确认。"
-  log_warn "准备切换 Profile：${PREVIOUS_DEPLOYED_PROFILE} -> ${PROFILE}。仅停用 vps-init 管理的冲突服务。"
+  [[ -n "${PREVIOUS_DEPLOYED_PROFILE:-}" ]] || return 0
 
-  case "$PREVIOUS_DEPLOYED_PROFILE" in
+  if [[ "$PREVIOUS_DEPLOYED_PROFILE" != "$PROFILE" ]]; then
+    [[ "${VPSINIT_ALLOW_PROFILE_SWITCH:-0}" == "1" ]] || die "Profile 切换未获确认。"
+    log_warn "准备切换 Profile：${PREVIOUS_DEPLOYED_PROFILE} -> ${PROFILE}。仅停用/调整 vps-init 管理的冲突服务。"
+  fi
+
+  # Reconcile project-managed topology even when DEPLOYED_PROFILE already
+  # matches the requested Profile. A failed migration can otherwise leave the
+  # service graph half-switched while state/config still point at the last
+  # verified Profile.
+  case "$PROFILE" in
     nginx-reality)
+      systemctl disable --now lucky >/dev/null 2>&1 || true
+      systemctl disable --now vps-init-landing >/dev/null 2>&1 || true
+      if ! systemctl is-active --quiet nginx 2>/dev/null &&
+         systemctl is-active --quiet x-ui 2>/dev/null &&
+         ss -H -ltnp 'sport = :443' 2>/dev/null | grep -qi xray; then
+        log_warn "检测到失败迁移残留：443 当前由 Xray 占用；先停止 x-ui，随后恢复 Nginx Stream + Reality 1443。"
+        systemctl stop x-ui >/dev/null 2>&1 || true
+      fi
+      ;;
+    reality-only)
       systemctl disable --now nginx >/dev/null 2>&1 || true
+      systemctl disable --now lucky >/dev/null 2>&1 || true
+      systemctl disable --now vps-init-landing >/dev/null 2>&1 || true
       ;;
     lucky-reality)
+      systemctl disable --now nginx >/dev/null 2>&1 || true
+      ;;
+    base-only)
+      systemctl disable --now x-ui >/dev/null 2>&1 || true
+      systemctl disable --now nginx >/dev/null 2>&1 || true
       systemctl disable --now lucky >/dev/null 2>&1 || true
       systemctl disable --now vps-init-landing >/dev/null 2>&1 || true
       ;;
   esac
-
-  # Moving a direct-443 Reality profile to Nginx requires 443 to be free
-  # during preflight. module_xui will start it again, then module_reality
-  # migrates the project-managed inbound to 127.0.0.1:1443 before Nginx starts.
-  if [[ "$PROFILE" == "nginx-reality" && ( "$PREVIOUS_DEPLOYED_PROFILE" == "reality-only" || "$PREVIOUS_DEPLOYED_PROFILE" == "lucky-reality" ) ]]; then
-    systemctl stop x-ui >/dev/null 2>&1 || true
-  fi
-
-  if [[ "$PROFILE" == "base-only" ]]; then
-    systemctl disable --now x-ui >/dev/null 2>&1 || true
-    systemctl disable --now nginx >/dev/null 2>&1 || true
-    systemctl disable --now lucky >/dev/null 2>&1 || true
-    systemctl disable --now vps-init-landing >/dev/null 2>&1 || true
-  fi
 }
 
 show_status_summary() {
