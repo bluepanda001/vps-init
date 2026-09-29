@@ -205,4 +205,11 @@ PY_CONFIG_TXN
 grep -q 'def lucky_nonce' modules/lucky/lucky_api.py
 grep -q 'Lucky-Admin-Token' modules/lucky/lucky_api.py
 grep -q "'TwoFA':''" modules/lucky/lucky_api.py
+
+# V1.2.5: Lucky 2.27.2 recovery uses documented runtime reset, without -cd,
+# then immediately rotates away from the default account through the API.
+grep -q '/opt/lucky/lucky -rResetUser' modules/lucky/apply.sh
+! grep -q -- '-rResetUser .* -cd' modules/lucky/apply.sh
+! grep -q -- '-setconf -key AdminAccount' modules/lucky/apply.sh
+grep -q -- '--user "666" --password "666" set-admin' modules/lucky/apply.sh
 echo 'SELFTEST_OK'
