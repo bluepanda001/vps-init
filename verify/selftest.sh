@@ -208,4 +208,11 @@ grep -q '/opt/lucky/lucky -rResetUser' modules/lucky/apply.sh
 ! grep -q -- '-rResetUser .* -cd' modules/lucky/apply.sh
 ! grep -q -- '-setconf -key AdminAccount' modules/lucky/apply.sh
 grep -q -- '--user "666" --password "666" set-admin' modules/lucky/apply.sh
+
+# V1.2.5: Lucky + Reality must front REALITY with Nginx Stream. REALITY sends
+# unauthenticated/non-REALITY TLS to target, so Xray-side fallback cannot expose Lucky.
+grep -q 'nginx-reality|lucky-reality) listen="127.0.0.1"; port=1443' modules/reality/apply.sh
+grep -q '\[\[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" \]\]' modules/nginx/apply.sh
+grep -q 'Reality -> 1443，普通 HTTPS -> Lucky 8443' modules/nginx/apply.sh
+! grep -q 'fallback="127.0.0.1:8443"' modules/reality/apply.sh
 echo 'SELFTEST_OK'
