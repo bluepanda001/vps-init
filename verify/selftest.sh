@@ -158,14 +158,10 @@ fi
 # V1.2.4: DD must be fully non-interactive for the target Linux username.
 grep -Fq 'cmd=(bash "$script" ubuntu 24.04 --minimal --user root)' lib/wizard.sh
 
-# V1.2.5: Lucky 2.27.2 uses encrypted/modular *.lkcf files.
-# Bootstrap must use the vendor-supported offline setconf interface while the
-# service is stopped so shutdown cannot overwrite the edited credentials.
+# V1.2.5: Lucky 2.27.2 uses encrypted/modular *.lkcf files. Bootstrap
+# must use the documented runtime reset and authenticated API rather than
+# editing encrypted config files or relying on unsupported offline setconf.
 grep -q 'ExecStart=/opt/lucky/lucky -cd /opt/lucky' modules/lucky/apply.sh
-grep -q 'systemctl stop lucky' modules/lucky/apply.sh
-grep -q -- '-setconf -key AdminAccount' modules/lucky/apply.sh
-grep -q -- '-setconf -key AdminPassword' modules/lucky/apply.sh
-grep -q -- '-setconf -key AllowInternetaccess -value false' modules/lucky/apply.sh
 grep -q 'systemctl start lucky' modules/lucky/apply.sh
 grep -q 'AllowInternetaccess.*False' modules/lucky/lucky_api.py
 if grep -q '/opt/lucky/lucky.conf' modules/lucky/apply.sh; then
