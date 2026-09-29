@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 """Lucky v2.27.2 loopback automation helper for vps-init."""
 from __future__ import annotations
-import argparse,base64,json,sys,urllib.error,urllib.parse,urllib.request
+import argparse,base64,json,sys,time,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
 
 
+def lucky_nonce() -> str:
+    # Lucky 2.27.2's current web client appends a decisecond timestamp plus
+    # a one-digit checksum to every API request. Requests without it may be
+    # rejected as bad credentials even when the account/password are correct.
+    base=str(int(time.time()*1000))[:-1]
+    return base+str(sum(int(ch) for ch in base)%8)
+
 def request(base,method,path,token='',body=None,query=None):
-    if query: path += ('&' if '?' in path else '?')+urllib.parse.urlencode(query)
+    q=dict(query or {})
+    q['_']=lucky_nonce()
+    path += ('&' if '?' in path else '?')+urllib.parse.urlencode(q)
     data=None if body is None else json.dumps(body,separators=(',',':')).encode()
     h={'Accept':'application/json','User-Agent':'vps-init/1'}
-    if token: h['Authorization']=token
+    if token: h['Lucky-Admin-Token']=token
     if data is not None: h['Content-Type']='application/json'
     r=urllib.request.Request(base.rstrip('/')+path,data=data,headers=h,method=method)
     try:
@@ -20,7 +29,7 @@ def request(base,method,path,token='',body=None,query=None):
     if not isinstance(out,dict) or out.get('ret') != 0: raise RuntimeError(str(out.get('msg') if isinstance(out,dict) else out))
     return out
 
-def login(base,user,password): return request(base,'POST','/api/login',body={'Account':user,'Password':password})['token']
+def login(base,user,password): return request(base,'POST','/api/login',body={'Account':user,'Password':password,'TwoFA':''})['token']
 
 def subrule(domain,location,remark):
     return {'Enable':True,'Key':'','Remark':remark,'Domains':[domain],'Locations':[location],
