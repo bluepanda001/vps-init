@@ -96,7 +96,12 @@ prepare_profile_transition() {
       systemctl disable --now vps-init-landing >/dev/null 2>&1 || true
       ;;
     lucky-reality)
-      systemctl disable --now nginx >/dev/null 2>&1 || true
+      if ! systemctl is-active --quiet nginx 2>/dev/null &&
+         systemctl is-active --quiet x-ui 2>/dev/null &&
+         ss -H -ltnp 'sport = :443' 2>/dev/null | grep -qi xray; then
+        log_warn "检测到旧版/失败迁移残留：443 当前由 Xray 占用；先停止 x-ui，随后切换为 Nginx Stream + Reality 1443 + Lucky 8443。"
+        systemctl stop x-ui >/dev/null 2>&1 || true
+      fi
       ;;
     base-only)
       systemctl disable --now x-ui >/dev/null 2>&1 || true
@@ -342,7 +347,10 @@ if profile_has_xui; then
   module_reality
   case "$PROFILE" in
     nginx-reality) module_nginx ;;
-    lucky-reality) module_lucky ;;
+    lucky-reality)
+      module_lucky
+      module_nginx
+      ;;
   esac
 fi
 
