@@ -90,11 +90,38 @@ def create_reality(args: argparse.Namespace) -> dict[str,Any]:
         existing_id=existing.get("id")
         existing_listen=str(existing.get("listen") or "")
         existing_port=int(existing.get("port") or 0)
-        if existing.get("protocol") != "vless" or existing_port != args.port or existing_listen != args.listen:
-            raise RuntimeError(f"existing {args.remark} does not match requested listen/profile: {existing_listen}:{existing_port}; profile switching is not automatic")
-        if args.fallback and existing_id:
-            req(args.base,args.token,"POST",f"panel/api/inbounds/{existing_id}/fallbacks",{"fallbacks":[{"childId":0,"name":"","alpn":"","path":"","dest":args.fallback,"xver":0,"sortOrder":0}]})
-        return {"created":False,"id":existing_id,"remark":args.remark,"message":"existing inbound kept",
+        if existing.get("protocol") != "vless":
+            raise RuntimeError(f"existing {args.remark} is not VLESS; refusing automatic migration")
+        migrated=False
+        if existing_port != args.port or existing_listen != args.listen:
+            sniffing=existing.get("sniffing")
+            if isinstance(sniffing,str):
+                try: sniffing=json.loads(sniffing)
+                except Exception: sniffing={}
+            payload={
+              "enable":True,
+              "remark":args.remark,
+              "listen":args.listen,
+              "port":args.port,
+              "protocol":"vless",
+              "expiryTime":int(existing.get("expiryTime") or 0),
+              "total":int(existing.get("total") or 0),
+              "settings":settings,
+              "streamSettings":st,
+              "sniffing":sniffing if isinstance(sniffing,dict) else {},
+              "disableFlow":bool(existing.get("disableFlow") or False),
+              "subSortIndex":int(existing.get("subSortIndex") or 1),
+              "shareAddrStrategy":str(existing.get("shareAddrStrategy") or "node"),
+              "shareAddr":str(existing.get("shareAddr") or "")
+            }
+            req(args.base,args.token,"POST",f"panel/api/inbounds/update/{existing_id}",payload)
+            migrated=True
+        if existing_id:
+            fallbacks=[]
+            if args.fallback:
+                fallbacks=[{"childId":0,"name":"","alpn":"","path":"","dest":args.fallback,"xver":0,"sortOrder":0}]
+            req(args.base,args.token,"POST",f"panel/api/inbounds/{existing_id}/fallbacks",{"fallbacks":fallbacks})
+        return {"created":False,"migrated":migrated,"id":existing_id,"remark":args.remark,"message":"existing inbound kept",
                 "target":target,"serverName":str(names[0]) if names else "","uuid":cl.get("id",""),
                 "publicKey":public_key,"subId":cl.get("subId",""),"shortId":(rs.get("shortIds") or [""])[0] if isinstance(rs.get("shortIds"),list) else ""}
     target,host,scan=select_target(args.base,args.token,args.target_mode,args.target,args.candidates)
@@ -124,6 +151,34 @@ def create_reality(args: argparse.Namespace) -> dict[str,Any]:
             "target":target,"serverName":host,"scan":scan}
 
 
+
+def list_hosts(base: str, token: str) -> list[dict[str, Any]]:
+    obj=get_obj(base,token,"GET","panel/api/hosts/list")
+    return [x for x in obj if isinstance(x,dict)] if isinstance(obj,list) else []
+
+
+def ensure_host(base: str, token: str, inbound_id: int, remark: str, address: str,
+                port: int, sni: str, fingerprint: str) -> dict[str,Any]:
+    body={
+      "inboundIds":[inbound_id],
+      "remark":remark,
+      "hosts":[f"{address}:{port}"],
+      "port":port,
+      "security":"same",
+      "sni":sni,
+      "fingerprint":fingerprint,
+    }
+    existing=next((x for x in list_hosts(base,token) if x.get("remark")==remark),None)
+    if existing and existing.get("groupId"):
+        obj=get_obj(base,token,"POST",f"panel/api/hosts/update/{existing['groupId']}",body)
+        return {"created":False,"groupId":existing["groupId"],"rows":obj}
+    obj=get_obj(base,token,"POST","panel/api/hosts/add",body)
+    group_id=""
+    if isinstance(obj,list) and obj and isinstance(obj[0],dict):
+        group_id=str(obj[0].get("groupId") or "")
+    return {"created":True,"groupId":group_id,"rows":obj}
+
+
 def main() -> int:
     ap=argparse.ArgumentParser()
     ap.add_argument("--base",required=True); ap.add_argument("--token",required=True)
@@ -136,6 +191,14 @@ def main() -> int:
     p.add_argument("--target-mode",choices=["auto","manual"],required=True); p.add_argument("--target",default=""); p.add_argument("--candidates",default="")
     p.add_argument("--fallback",default="")
     sp.add_parser("list-inbounds")
+    sp.add_parser("list-hosts")
+    p=sp.add_parser("ensure-host")
+    p.add_argument("--inbound-id",type=int,required=True)
+    p.add_argument("--remark",required=True)
+    p.add_argument("--address",required=True)
+    p.add_argument("--port",type=int,required=True)
+    p.add_argument("--sni",default="")
+    p.add_argument("--fingerprint",default="chrome")
     sp.add_parser("all-links")
     args=ap.parse_args()
     try:
@@ -143,6 +206,8 @@ def main() -> int:
       elif args.cmd=="scan": out=get_obj(args.base,args.token,"POST","panel/api/server/scanRealityTargets",{"targets":args.candidates})
       elif args.cmd=="create-reality": out=create_reality(args)
       elif args.cmd=="list-inbounds": out=list_inbounds(args.base,args.token)
+      elif args.cmd=="list-hosts": out=list_hosts(args.base,args.token)
+      elif args.cmd=="ensure-host": out=ensure_host(args.base,args.token,args.inbound_id,args.remark,args.address,args.port,args.sni,args.fingerprint)
       elif args.cmd=="all-links": out=get_obj(args.base,args.token,"GET","panel/api/inbounds/allLinks")
       else: raise RuntimeError("unknown command")
       print(json.dumps(out,ensure_ascii=False,separators=(",",":")))
