@@ -31,20 +31,56 @@ def request(base,method,path,token='',body=None,query=None):
 
 def login(base,user,password): return request(base,'POST','/api/login',body={'Account':user,'Password':password,'TwoFA':''})['token']
 
+def proxy_common(location=None):
+    return {
+      'WebServiceType':'reverseproxy','CorazaWAFInstance':'',
+      'Locations':[] if location is None else [location],
+      'LocationInsecureSkipVerify':False,
+      'EnableAccessLog':False,'LogLevel':4,'LogOutputToConsole':False,
+      'AccessLogMaxNum':256,'WebListShowLastLogMaxCount':10,
+      'RequestInfoLogFormat':'[#{clientIP}][#{remoteIP}]#{tab}[#{method}][#{host}#{url}]',
+      'ForwardedByClientIP':False,'TrustedCIDRsStrList':[],
+      'UseRuleGlobalAuthSettings':True,'UseTargetHost':False,'DisableLongConnection':False,
+      'CustomCrossDomain':'','CustomCrossMethods':'',
+      'RemoteIPHeaders':['X-Forwarded-For','X-Real-IP'],
+      'AddRemoteIPToHeader':False,'AddRemoteIPHeaderKey':'',
+      'EnableCrossDomain':False,'EnableBasicAuth':False,'BasicAuthRegConf':'',
+      'BasicAuthUser':'','BasicAuthPasswd':'','BasicAuthUserList':'',
+      'BasicAuthMaxLoginErrorCount':0,
+      'SafeIPMode':'blacklist','SafeUserAgentMode':'blacklist','UserAgentfilter':[''],
+      'CustomRobotTxt':False,'RobotTxt':'User-agent:  *\nDisallow:  /',
+      'AddProtoToHeader':False,'ProtoHeaderKey':'','EasyLucky':False,
+      'FileServerShowDir':True,'CacheBodyOnlyPath':'',
+      'FileServerIndexNames':'index.html\n','FileServerHideFiles':'',
+      'FileServerForbiddenPaths':'','FileServerMountList':[],
+      'fileServerCollapsectiveName':0,'NginxConf':'','CustomOutputText':'',
+      'DisableHTTP3':False,'MaxContinuous404Count':0,'MaxCorazaInterceptionCount':0,
+      'HttpClientNetwork':'tcp','DisableKeepAlives':True,'HttpClientTimeout':10,
+      'ProxyType':'','ProxyAddr':'','ProxyUser':'','ProxyPassword':'',
+      'AutoProxyLocation':False,'AutoProxyLocationWithoutSameHost':False,
+      'CacheEnabled':False,'CachePath':'','CacheKey':'','CacheLimit':0,
+      'CacheBodyMinLimit':0,'CacheBodyMaxLimit':0,'CacheOnlyKeyReg':'',
+      'CacheValidityPeriod':0,'DealCacheBeforeReverseProxy':True,
+      'GRPCSecureConnection':False,'CertificateSyncToken':'',
+      'OtherParams':{
+        'ProxyProtocolV2':True,'SpeedTestFrontSource':'','OauthType':'github',
+        'OauthClientID':'','OauthClientSecret':'','OauthClientKey':'',
+        'OauthRedirectURI':'','OauthServer':'','HttpClientProxyType':'',
+        'HttpClientProxyAddr':'','HttpClientProxyUser':'','HttpClientProxyPassword':'',
+        'WebAuth':False,'AllowAllThirdAuthUsers':False,'AllowThirdUserList':[],
+        'AllowThirdUserSkipTwoFA':False
+      }
+    }
+
 def subrule(domain,location,remark):
-    return {'Enable':True,'Key':'','Remark':remark,'Domains':[domain],'Locations':[location],
-      'EnableAccessLog':True,'LogLevel':4,'LogOutputToConsole':False,'AccessLogMaxNum':1000,'WebListShowLastLogMaxCount':10,
-      'RequestInfoLogFormat':'[#{clientIP}][#{remoteIP}]#{tab}[#{method}][#{host}#{url}]','ForwardedByClientIP':False,
-      'TrustedCIDRsStrList':[],'RemoteIPHeaders':[],'AddRemoteIPToHeader':False,'AddRemoteIPHeaderKey':'',
-      'EnableBasicAuth':False,'BasicAuthUser':'','BasicAuthPasswd':'','SafeIPMode':'blacklist','SafeUserAgentMode':'blacklist',
-      'UserAgentfilter':[],'CustomRobotTxt':False,'RobotTxt':'User-agent: *\nDisallow: /'}
+    row=proxy_common(location)
+    row.update({'Enable':True,'Key':'','Remark':remark,'GroupKey':'','Domains':[domain]})
+    return row
 
 def default_proxy(location):
-    return {'Key':'default','Locations':[location] if location else [],'EnableAccessLog':True,'LogLevel':4,'LogOutputToConsole':False,
-      'AccessLogMaxNum':500,'WebListShowLastLogMaxCount':10,'RequestInfoLogFormat':'[#{clientIP}][#{remoteIP}]#{tab}[#{method}][#{host}#{url}]',
-      'ForwardedByClientIP':False,'TrustedCIDRsStrList':[],'RemoteIPHeaders':[],'AddRemoteIPToHeader':False,'AddRemoteIPHeaderKey':'',
-      'EnableBasicAuth':False,'BasicAuthUser':'','BasicAuthPasswd':'','SafeIPMode':'blacklist','SafeUserAgentMode':'blacklist','UserAgentfilter':[],
-      'CustomRobotTxt':False,'RobotTxt':'User-agent: *\nDisallow: /'}
+    row=proxy_common(location)
+    row.update({'Key':'default'})
+    return row
 
 def sync_cert(base,token,cert,key,remark='vps-init-wildcard'):
     rows=request(base,'GET','/api/ssl',token).get('list') or []
@@ -61,14 +97,33 @@ def sync_cert(base,token,cert,key,remark='vps-init-wildcard'):
 
 def configure_rule(base,token,panel_domain,node_domain,panel_port,sub_port,landing_port):
     name='vps-init-https'
-    rows=request(base,'GET','/api/reverseproxyrules',token).get('list') or []
+    rows=request(base,'GET','/api/webservice/rules',token).get('ruleList') or []
     for row in rows:
       if isinstance(row,dict) and row.get('RuleName')==name and row.get('RuleKey'):
-        request(base,'DELETE','/api/reverseproxyrule',token,query={'key':row['RuleKey']})
-    body={'RuleName':name,'RuleKey':'','Enable':True,'Network':'tcp4','ListenIP':'127.0.0.1','ListenPort':8443,'EnableTLS':True,
-          'DefaultProxy':default_proxy(f'http://127.0.0.1:{landing_port}'),
-          'ProxyList':[subrule(panel_domain,f'http://127.0.0.1:{panel_port}','3x-ui-panel'),subrule(node_domain,f'http://127.0.0.1:{sub_port}','subscription')]}
-    request(base,'POST','/api/reverseproxyrule',token,body=body)
+        request(base,'DELETE','/api/webservice/rule/'+str(row['RuleKey']),token)
+    body={
+      'RuleName':name,'RuleKey':'','DiaglogShowMode':'simple','Enable':True,
+      'Network':'tcp4','CorazaWAFInstance':'','ListenIP':'127.0.0.1','ListenPort':8443,
+      'AutoOptionsFirewall':False,'EnableTLS':True,'TLSMinVersion':2,
+      'MaxHeaderKBytes':32,'IPFilterRule':'disable',
+      'MaxContinuous404Count':0,'MaxCorazaInterceptionCount':0,
+      'SendRateLimitEnabled':False,'SendRateLimit':0,
+      'ReceRateLimitEnabled':False,'ReceRateLimit':0,
+      'SingleConnSendRateLimitEnabled':False,'SingleConnSendRateLimit':0,
+      'SingleConnReceRateLimitEnabled':False,'SingleConnReceRateLimit':0,
+      'GlobalAllowAllThirdAuthUsers':False,'GlobalThirdAuthLoginUserList':[],
+      'GlobalAllowThirdUserSkipTwoFA':False,
+      'SingleIPSendRateLimitEnabled':False,'SingleIPSendRateLimit':0,
+      'SingleIPReceRateLimitEnabled':False,'SingleIPReceRateLimit':0,
+      'Http3':False,'GlobalBasicAuthUserList':'','ECH':False,'ECHDomain':'',
+      'ECDHPrivateKey':'','ECHConfigList':'',
+      'DefaultProxy':default_proxy(f'http://127.0.0.1:{landing_port}'),
+      'ProxyList':[
+        subrule(panel_domain,f'http://127.0.0.1:{panel_port}','3x-ui-panel'),
+        subrule(node_domain,f'http://127.0.0.1:{sub_port}','subscription')
+      ]
+    }
+    request(base,'POST','/api/webservice/rules',token,body=body)
 
 def main():
     ap=argparse.ArgumentParser()
