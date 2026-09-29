@@ -321,7 +321,7 @@ wizard_collect() {
       "Base Only - 系统初始化/安全/BBR/Swap，不安装 3x-ui" \
       "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
       "Nginx + Reality - Nginx Stream 443 分流，需要 Cloudflare 域名" \
-      "Lucky + Reality - Reality 占 443，HTTPS fallback 到 Lucky，需要 Cloudflare 域名" \
+      "Lucky + Reality - Nginx Stream 443 分流，Reality + Lucky HTTPS，需要 Cloudflare 域名" \
       "返回安装方式")"
     [[ "$profile_choice" == 5 ]] && continue
     case "$profile_choice" in
