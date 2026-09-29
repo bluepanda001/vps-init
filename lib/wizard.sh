@@ -418,10 +418,24 @@ wizard_collect() {
 }
 
 wizard_run() {
-  local cfg="${1:-$PERSIST_DIR/config.env}"
+  local cfg="${1:-$PERSIST_DIR/config.env}" pending rc=0
   ensure_dir "$(dirname "$cfg")"
   wizard_collect || return $?
-  wizard_write_config "$cfg"
-  log_ok "配置已生成：$cfg"
-  VPSINIT_ALLOW_PROFILE_SWITCH="${W_ALLOW_PROFILE_SWITCH:-0}" "$ROOT_DIR/vps-init" apply "$cfg"
+
+  # Keep the last verified config intact until the candidate deployment passes
+  # verification. A failed Profile migration must not leave config.env pointing
+  # at a topology that DEPLOYED_PROFILE never accepted.
+  pending="$(mktemp "$(dirname "$cfg")/.config.env.pending.XXXXXX")"
+  wizard_write_config "$pending"
+  log_ok "候选配置已生成；验收通过后才会提交到：$cfg"
+
+  VPSINIT_ALLOW_PROFILE_SWITCH="${W_ALLOW_PROFILE_SWITCH:-0}" "$ROOT_DIR/vps-init" apply "$pending" || rc=$?
+  if (( rc == 0 )); then
+    install -m 600 "$pending" "$cfg"
+    log_ok "部署与验收通过，配置已提交：$cfg"
+  else
+    log_warn "部署未通过，原有已验证配置未被候选配置覆盖。"
+  fi
+  rm -f "$pending"
+  return "$rc"
 }
