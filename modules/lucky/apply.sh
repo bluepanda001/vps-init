@@ -109,5 +109,5 @@ HOOK
   chmod 755 /etc/letsencrypt/renewal-hooks/deploy/90-vps-init-lucky
   secret_set XUI_PUBLIC_URL "https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"
   secret_set SUBSCRIPTION_BASE_URL "https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}"
-  log_ok "Lucky 8443 HTTPS 后端与两个域名反代已配置；公网 443 仍由 Reality 占用。"
+  log_ok "Lucky 8443 HTTPS 后端与两个域名反代已配置；公网 443 将由 Nginx Stream 统一分流。"
 }
