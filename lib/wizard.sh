@@ -418,9 +418,17 @@ wizard_collect() {
 }
 
 wizard_run() {
-  local cfg="${1:-$PERSIST_DIR/config.env}" pending rc=0
+  local cfg="${1:-$PERSIST_DIR/config.env}" pending backup="" rc=0 rollback_rc=0 previous_profile=""
   ensure_dir "$(dirname "$cfg")"
-  wizard_collect || return $?
+  state_load
+  previous_profile="${DEPLOYED_PROFILE:-}"
+  if [[ -f "$cfg" && -n "$previous_profile" ]]; then
+    backup="$(mktemp "$(dirname "$cfg")/.config.env.rollback.XXXXXX")"
+    cp -a "$cfg" "$backup"
+    chmod 600 "$backup"
+  fi
+
+  wizard_collect || { [[ -n "$backup" ]] && rm -f "$backup"; return $?; }
 
   # Keep the last verified config intact until the candidate deployment passes
   # verification. A failed Profile migration must not leave config.env pointing
@@ -435,7 +443,17 @@ wizard_run() {
     log_ok "部署与验收通过，配置已提交：$cfg"
   else
     log_warn "部署未通过，原有已验证配置未被候选配置覆盖。"
+    if [[ -n "$backup" && -n "$previous_profile" ]]; then
+      log_warn "尝试自动恢复上一个已验证 Profile=${previous_profile} 的服务拓扑。"
+      VPSINIT_ALLOW_PROFILE_SWITCH=1 "$ROOT_DIR/vps-init" apply "$backup" || rollback_rc=$?
+      if (( rollback_rc == 0 )); then
+        log_ok "已恢复上一个已验证 Profile=${previous_profile}。"
+      else
+        log_warn "自动回滚未完全成功（exit=${rollback_rc}）；保留原配置，请运行 vps-init apply 重新收敛。"
+      fi
+    fi
   fi
   rm -f "$pending"
+  [[ -n "$backup" ]] && rm -f "$backup"
   return "$rc"
 }
