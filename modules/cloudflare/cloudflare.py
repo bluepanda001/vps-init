@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import argparse,json,re,sys,urllib.error,urllib.parse,urllib.request
+import argparse,json,os,re,sys,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
 TOKEN_FILE=Path('/root/.secrets/cloudflare.ini')
 API='https://api.cloudflare.com/client/v4'
 
 def token():
+    env=os.environ.get('CLOUDFLARE_API_TOKEN','').strip()
+    if env: return env
     if not TOKEN_FILE.exists(): raise RuntimeError(f'missing {TOKEN_FILE}')
     m=re.search(r'^\s*dns_cloudflare_api_token\s*=\s*(.+?)\s*$',TOKEN_FILE.read_text(),re.M)
     if not m: raise RuntimeError('dns_cloudflare_api_token not found')
@@ -37,12 +39,13 @@ def upsert(zone,name,ip,typ='A'):
 
 def main():
     ap=argparse.ArgumentParser(); sp=ap.add_subparsers(dest='cmd',required=True)
-    sp.add_parser('verify')
+    p=sp.add_parser('verify'); p.add_argument('--zone',required=True)
     p=sp.add_parser('upsert'); p.add_argument('--zone',required=True); p.add_argument('--name',required=True); p.add_argument('--ip',required=True); p.add_argument('--type',default='A')
     args=ap.parse_args()
     try:
       if args.cmd=='verify':
-        out=call('GET','/user/tokens/verify'); print(json.dumps({'ok':True,'status':(out.get('result') or {}).get('status')}))
+        zid=zone_id(args.zone)
+        print(json.dumps({'ok':True,'zone':args.zone,'zone_id':zid}))
       else:
         zid=zone_id(args.zone); upsert(zid,args.name,args.ip,args.type); print(json.dumps({'ok':True,'zone_id':zid,'name':args.name,'type':args.type}))
       return 0

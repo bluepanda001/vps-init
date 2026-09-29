@@ -158,81 +158,61 @@ fi
 # V1.2.4: DD must be fully non-interactive for the target Linux username.
 grep -Fq 'cmd=(bash "$script" ubuntu 24.04 --minimal --user root)' lib/wizard.sh
 
-# V1.2.4: Lucky must bootstrap from its actual root-only config instead of
-# assuming upstream default credentials.
-grep -q 'ensure-admin' modules/lucky/apply.sh
-grep -q -- '--config /opt/lucky/lucky.conf' modules/lucky/apply.sh
-grep -q 'load_local_admin' modules/lucky/lucky_api.py
-if grep -q -- '--user 666 --password 666' modules/lucky/apply.sh; then
-  echo 'FAIL: Lucky automation must not assume 666/666' >&2; exit 1
+# V1.2.5: Lucky 2.27.2 uses encrypted/modular *.lkcf files. Bootstrap
+# must use the documented runtime reset and authenticated API rather than
+# editing encrypted config files or relying on unsupported offline setconf.
+grep -q 'ExecStart=/opt/lucky/lucky -cd /opt/lucky' modules/lucky/apply.sh
+grep -q 'systemctl start lucky' modules/lucky/apply.sh
+grep -q 'AllowInternetaccess.*False' modules/lucky/lucky_api.py
+if grep -q '/opt/lucky/lucky.conf' modules/lucky/apply.sh; then
+  echo 'FAIL: Lucky 2.27.2 must not treat lucky.conf as plaintext config' >&2; exit 1
+fi
+if grep -q 'load_local_admin\|ensure-admin' modules/lucky/lucky_api.py modules/lucky/apply.sh; then
+  echo 'FAIL: obsolete Lucky plaintext-config bootstrap remains' >&2; exit 1
 fi
 
-python3 - <<'PY_LUCKY'
-import importlib.util
-import json
-import tempfile
-from pathlib import Path
-
-spec = importlib.util.spec_from_file_location("lucky_api", "modules/lucky/lucky_api.py")
-mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
-
-with tempfile.TemporaryDirectory() as td:
-    cfg = Path(td) / "lucky.conf"
-    cfg.write_text(json.dumps({
-        "BaseConfigure": {
-            "AdminAccount": "existing-admin",
-            "AdminPassword": "existing-password"
-        }
-    }))
-
-    assert mod.load_local_admin(cfg) == ("existing-admin", "existing-password")
-
-    state = {"rotated": False}
-    put_bodies = []
-
-    def fake_login(base, user, password):
-        if (user, password) == ("managed-admin", "managed-password"):
-            if state["rotated"]:
-                return "managed-token"
-            raise RuntimeError("not rotated yet")
-        if (user, password) == ("existing-admin", "existing-password"):
-            return "old-token"
-        raise RuntimeError("bad credential")
-
-    def fake_request(base, method, path, token="", body=None, query=None):
-        if method == "GET" and path == "/api/baseconfigure":
-            assert token == "old-token"
-            return {"baseconfigure": {
-                "AdminAccount": "existing-admin",
-                "AdminPassword": "existing-password",
-                "AllowInternetaccess": True,
-                "AdminWebListenPort": 16601
-            }}
-        if method == "PUT" and path == "/api/baseconfigure":
-            assert token == "old-token"
-            assert body["AdminAccount"] == "managed-admin"
-            assert body["AdminPassword"] == "managed-password"
-            assert body["AllowInternetaccess"] is False
-            put_bodies.append(body)
-            state["rotated"] = True
-            return {"ret": 0}
-        raise AssertionError((method, path, token))
-
-    mod.login = fake_login
-    mod.request = fake_request
-    assert mod.ensure_admin("http://127.0.0.1:16601", cfg, "managed-admin", "managed-password") is True
-    assert len(put_bodies) == 1
-    assert mod.ensure_admin("http://127.0.0.1:16601", cfg, "managed-admin", "managed-password") is False
-    assert len(put_bodies) == 1
-PY_LUCKY
-
 grep -q '拒绝回退' install.sh
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.4" ]]
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.5" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
 grep -q 'ubuntu 24.04 --minimal --user root' lib/wizard.sh
 grep -q '请输入大写 DD' lib/wizard.sh
 grep -q 'reinstall.sh reset' lib/wizard.sh
+
+# V1.2.5: wizard Profile migrations are transactional at the config-file level.
+grep -q '失败迁移残留：443 当前由 Xray 占用' vps-init
+grep -q '尝试自动恢复上一个已验证 Profile' lib/wizard.sh
+grep -q 'VPSINIT_ALLOW_PROFILE_SWITCH=1.*apply.*backup' lib/wizard.sh
+grep -q 'config.env.pending' lib/wizard.sh
+grep -q '原有已验证配置未被候选配置覆盖' lib/wizard.sh
+python3 - <<'PY_CONFIG_TXN'
+from pathlib import Path
+s=Path("vps-init").read_text()
+assert 'resolve_runtime_ports\npersist_config "$cfg"\ncore_swap' not in s
+verify=s.index('if verify_all; then')
+persist=s.index('persist_config "$cfg"', verify)
+state=s.index('state_set DEPLOYED_PROFILE "$PROFILE"', verify)
+assert verify < persist < state
+PY_CONFIG_TXN
+
+# V1.2.5: Lucky 2.27.2 current frontend requires an anti-replay nonce and
+# uses Lucky-Admin-Token instead of Authorization for authenticated API calls.
+grep -q 'def lucky_nonce' modules/lucky/lucky_api.py
+grep -q 'Lucky-Admin-Token' modules/lucky/lucky_api.py
+grep -q "'TwoFA':''" modules/lucky/lucky_api.py
+
+# V1.2.5: Lucky 2.27.2 recovery uses documented runtime reset, without -cd,
+# then immediately rotates away from the default account through the API.
+grep -q '/opt/lucky/lucky -rResetUser' modules/lucky/apply.sh
+! grep -q -- '-rResetUser .* -cd' modules/lucky/apply.sh
+! grep -q -- '-setconf -key AdminAccount' modules/lucky/apply.sh
+grep -q -- '--user "666" --password "666" set-admin' modules/lucky/apply.sh
+
+# V1.2.5: Lucky + Reality must front REALITY with Nginx Stream. REALITY sends
+# unauthenticated/non-REALITY TLS to target, so Xray-side fallback cannot expose Lucky.
+grep -q 'nginx-reality|lucky-reality) listen="127.0.0.1"; port=1443' modules/reality/apply.sh
+grep -q '\[\[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" \]\]' modules/nginx/apply.sh
+grep -q 'Reality -> 1443，普通 HTTPS -> Lucky 8443' modules/nginx/apply.sh
+! grep -q 'fallback="127.0.0.1:8443"' modules/reality/apply.sh
 echo 'SELFTEST_OK'

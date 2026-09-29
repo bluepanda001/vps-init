@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 module_nginx() {
-  [[ "$PROFILE" == "nginx-reality" ]] || return 0
+  [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]] || return 0
   apt-get install -y nginx libnginx-mod-stream
   nginx -V 2>&1 | grep -q -- '--with-stream_ssl_preread_module' || \
-    die "当前 Nginx 构建不支持 stream ssl_preread，拒绝继续 nginx-reality Profile。"
+    die "当前 Nginx 构建不支持 stream ssl_preread，拒绝继续域名 443 分流。"
   mkdir -p /etc/nginx/stream-conf.d /var/www/vps-init
   install -m 644 "$ROOT_DIR/templates/index.html" /var/www/vps-init/index.html
   backup_file /etc/nginx/nginx.conf
@@ -18,7 +18,8 @@ NGINX
   fi
 
   cat > /etc/nginx/stream-conf.d/vps-init.conf <<EOF2
-# Managed by vps-init
+# Managed by vps-init.
+# REALITY uses its camouflage SNI; all other TLS goes to the HTTPS backend.
 map \$ssl_preread_server_name \$vpsinit_backend {
     "${REALITY_SERVER_NAME}" 127.0.0.1:1443;
     default 127.0.0.1:8443;
@@ -34,8 +35,9 @@ server {
 EOF2
 
   rm -f /etc/nginx/sites-enabled/default
-  cat > /etc/nginx/sites-available/vps-init <<EOF2
-# Managed by vps-init. TLS is terminated here only after Nginx Stream routes normal HTTPS to 8443.
+  if [[ "$PROFILE" == "nginx-reality" ]]; then
+    cat > /etc/nginx/sites-available/vps-init <<EOF2
+# Managed by vps-init. TLS terminates here after Stream routes normal HTTPS to 8443.
 server {
     listen 80;
     listen [::]:80;
@@ -84,6 +86,18 @@ server {
     }
 }
 EOF2
+  else
+    cat > /etc/nginx/sites-available/vps-init <<EOF2
+# Managed by vps-init. Lucky terminates HTTPS on loopback :8443.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${PANEL_DOMAIN} ${NODE_DOMAIN};
+    return 308 https://\$host\$request_uri;
+}
+EOF2
+  fi
+
   ln -sfn /etc/nginx/sites-available/vps-init /etc/nginx/sites-enabled/vps-init
   nginx -t
   systemctl enable nginx
@@ -97,5 +111,9 @@ HOOK
   chmod 755 /etc/letsencrypt/renewal-hooks/deploy/90-vps-init-nginx
   secret_set XUI_PUBLIC_URL "https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"
   secret_set SUBSCRIPTION_BASE_URL "https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}"
-  log_ok "Nginx Stream 443 SNI 分流已配置。"
+  if [[ "$PROFILE" == "lucky-reality" ]]; then
+    log_ok "Nginx Stream 443 SNI 分流已配置：Reality -> 1443，普通 HTTPS -> Lucky 8443。"
+  else
+    log_ok "Nginx Stream 443 SNI 分流已配置。"
+  fi
 }

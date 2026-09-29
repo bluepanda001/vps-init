@@ -23,14 +23,16 @@ reload_ssh_runtime() {
 }
 
 verify_ssh_listener() {
-  if ! ss -H -ltn4 "sport = :${SSH_PORT}" 2>/dev/null | grep -q .; then
+  if ! ss -H -ltn4 "sport = :${SSH_PORT}" 2>/dev/null | grep . >/dev/null; then
     die "SSH 配置已写入，但 IPv4 实际没有监听 ${SSH_PORT}/tcp。当前会话不要关闭；请检查 ssh.socket/ssh.service。"
   fi
 }
 
 verify_root_key_policy() {
-  sshd -T | grep -qi '^pubkeyauthentication yes$' || die "PubkeyAuthentication 未实际生效为 yes。"
-  if ! sshd -T | grep -Eqi '^permitrootlogin (prohibit-password|without-password)$'; then
+  local effective
+  effective="$(sshd -T)"
+  grep -qi '^pubkeyauthentication yes$' <<<"$effective" || die "PubkeyAuthentication 未实际生效为 yes。"
+  if ! grep -Eqi '^permitrootlogin (prohibit-password|without-password)$' <<<"$effective"; then
     echo "当前 PermitRootLogin 实际值未进入 key-only 模式。可能有更早加载的 hardening drop-in 覆盖配置：" >&2
     grep -RniE '^[[:space:]]*(PermitRootLogin|PubkeyAuthentication)[[:space:]]+' \
       /etc/ssh/sshd_config /etc/ssh/sshd_config.d /usr/lib/ssh/sshd_config.d 2>/dev/null >&2 || true
@@ -73,7 +75,9 @@ EOF2
   reload_ssh_runtime
   verify_ssh_listener
   verify_root_key_policy
-  sshd -T | grep -qi '^passwordauthentication no$' || die "PasswordAuthentication 未成功关闭。"
+  local effective
+  effective="$(sshd -T)"
+  grep -qi '^passwordauthentication no$' <<<"$effective" || die "PasswordAuthentication 未成功关闭。"
 }
 
 show_netcatty_identity_hint() {
@@ -126,7 +130,7 @@ EOF2
   rm -f "$kt"
 
   # 如果服务器此前已经启用 UFW，先放行新 SSH 端口，再 reload sshd，避免把自己锁在门外。
-  if command_exists ufw && ufw status 2>/dev/null | grep -q '^Status: active'; then
+  if command_exists ufw && ufw status 2>/dev/null | grep '^Status: active' >/dev/null; then
     ufw allow "${SSH_PORT}/tcp" comment 'vps-init ssh' >/dev/null
   fi
 

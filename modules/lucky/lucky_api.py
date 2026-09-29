@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 """Lucky v2.27.2 loopback automation helper for vps-init."""
 from __future__ import annotations
-import argparse,base64,json,sys,urllib.error,urllib.parse,urllib.request
+import argparse,base64,json,sys,time,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
 
 
+def lucky_nonce() -> str:
+    # Lucky 2.27.2's current web client appends a decisecond timestamp plus
+    # a one-digit checksum to every API request. Requests without it may be
+    # rejected as bad credentials even when the account/password are correct.
+    base=str(int(time.time()*1000))[:-1]
+    return base+str(sum(int(ch) for ch in base)%8)
+
 def request(base,method,path,token='',body=None,query=None):
-    if query: path += ('&' if '?' in path else '?')+urllib.parse.urlencode(query)
+    q=dict(query or {})
+    q['_']=lucky_nonce()
+    path += ('&' if '?' in path else '?')+urllib.parse.urlencode(q)
     data=None if body is None else json.dumps(body,separators=(',',':')).encode()
     h={'Accept':'application/json','User-Agent':'vps-init/1'}
-    if token: h['Authorization']=token
+    if token: h['Lucky-Admin-Token']=token
     if data is not None: h['Content-Type']='application/json'
     r=urllib.request.Request(base.rstrip('/')+path,data=data,headers=h,method=method)
     try:
@@ -20,55 +29,58 @@ def request(base,method,path,token='',body=None,query=None):
     if not isinstance(out,dict) or out.get('ret') != 0: raise RuntimeError(str(out.get('msg') if isinstance(out,dict) else out))
     return out
 
-def login(base,user,password): return request(base,'POST','/api/login',body={'Account':user,'Password':password})['token']
+def login(base,user,password): return request(base,'POST','/api/login',body={'Account':user,'Password':password,'TwoFA':''})['token']
 
-def load_local_admin(config_path):
-    try:
-      data=json.loads(Path(config_path).read_text())
-      base=data.get('BaseConfigure') if isinstance(data,dict) else None
-      user=base.get('AdminAccount') if isinstance(base,dict) else None
-      password=base.get('AdminPassword') if isinstance(base,dict) else None
-    except Exception as e:
-      raise RuntimeError(f'cannot read Lucky config: {e}') from None
-    if not isinstance(user,str) or not user or not isinstance(password,str) or not password:
-      raise RuntimeError('Lucky config does not contain a usable BaseConfigure admin credential')
-    return user,password
-
-def ensure_admin(base,config_path,new_user,new_password):
-    # Idempotent fast path: project-managed credentials already work.
-    try:
-      login(base,new_user,new_password)
-      return False
-    except Exception:
-      pass
-
-    # Do not assume upstream defaults such as 666/666. Lucky persists the
-    # actual active admin credential in its root-only JSON config, so bootstrap
-    # from that local source of truth and immediately rotate to our random pair.
-    old_user,old_password=load_local_admin(config_path)
-    tok=login(base,old_user,old_password)
-    cfg=request(base,'GET','/api/baseconfigure',tok)['baseconfigure']
-    cfg['AdminAccount']=new_user
-    cfg['AdminPassword']=new_password
-    cfg['AllowInternetaccess']=False
-    request(base,'PUT','/api/baseconfigure',tok,body=cfg)
-    login(base,new_user,new_password)
-    return True
+def proxy_common(location=None):
+    return {
+      'WebServiceType':'reverseproxy','CorazaWAFInstance':'',
+      'Locations':[] if location is None else [location],
+      'LocationInsecureSkipVerify':False,
+      'EnableAccessLog':False,'LogLevel':4,'LogOutputToConsole':False,
+      'AccessLogMaxNum':256,'WebListShowLastLogMaxCount':10,
+      'RequestInfoLogFormat':'[#{clientIP}][#{remoteIP}]#{tab}[#{method}][#{host}#{url}]',
+      'ForwardedByClientIP':False,'TrustedCIDRsStrList':[],
+      'UseRuleGlobalAuthSettings':True,'UseTargetHost':False,'DisableLongConnection':False,
+      'CustomCrossDomain':'','CustomCrossMethods':'',
+      'RemoteIPHeaders':['X-Forwarded-For','X-Real-IP'],
+      'AddRemoteIPToHeader':False,'AddRemoteIPHeaderKey':'',
+      'EnableCrossDomain':False,'EnableBasicAuth':False,'BasicAuthRegConf':'',
+      'BasicAuthUser':'','BasicAuthPasswd':'','BasicAuthUserList':'',
+      'BasicAuthMaxLoginErrorCount':0,
+      'SafeIPMode':'blacklist','SafeUserAgentMode':'blacklist','UserAgentfilter':[''],
+      'CustomRobotTxt':False,'RobotTxt':'User-agent:  *\nDisallow:  /',
+      'AddProtoToHeader':False,'ProtoHeaderKey':'','EasyLucky':False,
+      'FileServerShowDir':True,'CacheBodyOnlyPath':'',
+      'FileServerIndexNames':'index.html\n','FileServerHideFiles':'',
+      'FileServerForbiddenPaths':'','FileServerMountList':[],
+      'fileServerCollapsectiveName':0,'NginxConf':'','CustomOutputText':'',
+      'DisableHTTP3':False,'MaxContinuous404Count':0,'MaxCorazaInterceptionCount':0,
+      'HttpClientNetwork':'tcp','DisableKeepAlives':True,'HttpClientTimeout':10,
+      'ProxyType':'','ProxyAddr':'','ProxyUser':'','ProxyPassword':'',
+      'AutoProxyLocation':False,'AutoProxyLocationWithoutSameHost':False,
+      'CacheEnabled':False,'CachePath':'','CacheKey':'','CacheLimit':0,
+      'CacheBodyMinLimit':0,'CacheBodyMaxLimit':0,'CacheOnlyKeyReg':'',
+      'CacheValidityPeriod':0,'DealCacheBeforeReverseProxy':True,
+      'GRPCSecureConnection':False,'CertificateSyncToken':'',
+      'OtherParams':{
+        'ProxyProtocolV2':True,'SpeedTestFrontSource':'','OauthType':'github',
+        'OauthClientID':'','OauthClientSecret':'','OauthClientKey':'',
+        'OauthRedirectURI':'','OauthServer':'','HttpClientProxyType':'',
+        'HttpClientProxyAddr':'','HttpClientProxyUser':'','HttpClientProxyPassword':'',
+        'WebAuth':False,'AllowAllThirdAuthUsers':False,'AllowThirdUserList':[],
+        'AllowThirdUserSkipTwoFA':False
+      }
+    }
 
 def subrule(domain,location,remark):
-    return {'Enable':True,'Key':'','Remark':remark,'Domains':[domain],'Locations':[location],
-      'EnableAccessLog':True,'LogLevel':4,'LogOutputToConsole':False,'AccessLogMaxNum':1000,'WebListShowLastLogMaxCount':10,
-      'RequestInfoLogFormat':'[#{clientIP}][#{remoteIP}]#{tab}[#{method}][#{host}#{url}]','ForwardedByClientIP':False,
-      'TrustedCIDRsStrList':[],'RemoteIPHeaders':[],'AddRemoteIPToHeader':False,'AddRemoteIPHeaderKey':'',
-      'EnableBasicAuth':False,'BasicAuthUser':'','BasicAuthPasswd':'','SafeIPMode':'blacklist','SafeUserAgentMode':'blacklist',
-      'UserAgentfilter':[],'CustomRobotTxt':False,'RobotTxt':'User-agent: *\nDisallow: /'}
+    row=proxy_common(location)
+    row.update({'Enable':True,'Key':'','Remark':remark,'GroupKey':'','Domains':[domain]})
+    return row
 
 def default_proxy(location):
-    return {'Key':'default','Locations':[location] if location else [],'EnableAccessLog':True,'LogLevel':4,'LogOutputToConsole':False,
-      'AccessLogMaxNum':500,'WebListShowLastLogMaxCount':10,'RequestInfoLogFormat':'[#{clientIP}][#{remoteIP}]#{tab}[#{method}][#{host}#{url}]',
-      'ForwardedByClientIP':False,'TrustedCIDRsStrList':[],'RemoteIPHeaders':[],'AddRemoteIPToHeader':False,'AddRemoteIPHeaderKey':'',
-      'EnableBasicAuth':False,'BasicAuthUser':'','BasicAuthPasswd':'','SafeIPMode':'blacklist','SafeUserAgentMode':'blacklist','UserAgentfilter':[],
-      'CustomRobotTxt':False,'RobotTxt':'User-agent: *\nDisallow: /'}
+    row=proxy_common(location)
+    row.update({'Key':'default'})
+    return row
 
 def sync_cert(base,token,cert,key,remark='vps-init-wildcard'):
     rows=request(base,'GET','/api/ssl',token).get('list') or []
@@ -76,18 +88,42 @@ def sync_cert(base,token,cert,key,remark='vps-init-wildcard'):
       if isinstance(row,dict) and row.get('Remark')==remark and row.get('Key'):
         request(base,'DELETE','/api/ssl',token,query={'key':row['Key']})
     cert_b64=base64.b64encode(Path(cert).read_bytes()).decode(); key_b64=base64.b64encode(Path(key).read_bytes()).decode()
-    request(base,'POST','/api/ssl',token,body={'Key':'','Enable':True,'Remark':remark,'CertBase64':cert_b64,'KeyBase64':key_b64,'AddTime':''})
+    request(base,'POST','/api/ssl',token,body={
+      'Key':'','MappingToPath':False,'MappingPath':'','MappingChangeScript':'',
+      'Enable':True,'Remark':remark,'CertBase64':cert_b64,'KeyBase64':key_b64,
+      'IssuerCertificate':'','AddFrom':'file','ExtParams':{},
+      'AllSyncClient':False,'SyncClientList':[]
+    })
 
 def configure_rule(base,token,panel_domain,node_domain,panel_port,sub_port,landing_port):
     name='vps-init-https'
-    rows=request(base,'GET','/api/reverseproxyrules',token).get('list') or []
+    rows=request(base,'GET','/api/webservice/rules',token).get('ruleList') or []
     for row in rows:
       if isinstance(row,dict) and row.get('RuleName')==name and row.get('RuleKey'):
-        request(base,'DELETE','/api/reverseproxyrule',token,query={'key':row['RuleKey']})
-    body={'RuleName':name,'RuleKey':'','Enable':True,'Network':'tcp4','ListenIP':'127.0.0.1','ListenPort':8443,'EnableTLS':True,
-          'DefaultProxy':default_proxy(f'http://127.0.0.1:{landing_port}'),
-          'ProxyList':[subrule(panel_domain,f'http://127.0.0.1:{panel_port}','3x-ui-panel'),subrule(node_domain,f'http://127.0.0.1:{sub_port}','subscription')]}
-    request(base,'POST','/api/reverseproxyrule',token,body=body)
+        request(base,'DELETE','/api/webservice/rule/'+str(row['RuleKey']),token)
+    body={
+      'RuleName':name,'RuleKey':'','DiaglogShowMode':'simple','Enable':True,
+      'Network':'tcp4','CorazaWAFInstance':'','ListenIP':'127.0.0.1','ListenPort':8443,
+      'AutoOptionsFirewall':False,'EnableTLS':True,'TLSMinVersion':2,
+      'MaxHeaderKBytes':32,'IPFilterRule':'disable',
+      'MaxContinuous404Count':0,'MaxCorazaInterceptionCount':0,
+      'SendRateLimitEnabled':False,'SendRateLimit':0,
+      'ReceRateLimitEnabled':False,'ReceRateLimit':0,
+      'SingleConnSendRateLimitEnabled':False,'SingleConnSendRateLimit':0,
+      'SingleConnReceRateLimitEnabled':False,'SingleConnReceRateLimit':0,
+      'GlobalAllowAllThirdAuthUsers':False,'GlobalThirdAuthLoginUserList':[],
+      'GlobalAllowThirdUserSkipTwoFA':False,
+      'SingleIPSendRateLimitEnabled':False,'SingleIPSendRateLimit':0,
+      'SingleIPReceRateLimitEnabled':False,'SingleIPReceRateLimit':0,
+      'Http3':False,'GlobalBasicAuthUserList':'','ECH':False,'ECHDomain':'',
+      'ECDHPrivateKey':'','ECHConfigList':'',
+      'DefaultProxy':default_proxy(f'http://127.0.0.1:{landing_port}'),
+      'ProxyList':[
+        subrule(panel_domain,f'http://127.0.0.1:{panel_port}','3x-ui-panel'),
+        subrule(node_domain,f'http://127.0.0.1:{sub_port}','subscription')
+      ]
+    }
+    request(base,'POST','/api/webservice/rules',token,body=body)
 
 def main():
     ap=argparse.ArgumentParser()
@@ -96,16 +132,11 @@ def main():
     ap.add_argument('--password')
     sp=ap.add_subparsers(dest='cmd',required=True)
     p=sp.add_parser('set-admin'); p.add_argument('--new-user',required=True); p.add_argument('--new-password',required=True)
-    p=sp.add_parser('ensure-admin'); p.add_argument('--config',required=True); p.add_argument('--new-user',required=True); p.add_argument('--new-password',required=True)
     p=sp.add_parser('sync-cert'); p.add_argument('--cert',required=True); p.add_argument('--key',required=True)
     p=sp.add_parser('configure-web'); p.add_argument('--panel-domain',required=True); p.add_argument('--node-domain',required=True); p.add_argument('--panel-port',type=int,required=True); p.add_argument('--sub-port',type=int,required=True); p.add_argument('--landing-port',type=int,default=18080)
     sp.add_parser('status')
     a=ap.parse_args()
     try:
-      if a.cmd=='ensure-admin':
-        changed=ensure_admin(a.base,a.config,a.new_user,a.new_password)
-        print(json.dumps({'ok':True,'changed':changed}))
-        return 0
       if not a.user or not a.password:
         raise RuntimeError('--user and --password are required for this command')
       tok=login(a.base,a.user,a.password)

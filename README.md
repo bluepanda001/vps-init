@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.2.4 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
+V1.2.5 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
 
 ## 一键安装
 
@@ -67,7 +67,7 @@ vps-init
 | `base-only` | 不配置 | 不需要 | 无 | 无 |
 | `reality-only` | 3x-ui 自带 Xray Reality | 不需要 | IP HTTPS | 无 |
 | `nginx-reality` | Nginx Stream SNI 分流 | 必须 | Nginx HTTPS 反代 | Nginx 内部 TLS :8443 |
-| `lucky-reality` | 3x-ui 自带 Xray Reality | 必须 | Lucky HTTPS 反代 | Reality fallback → Lucky :8443 |
+| `lucky-reality` | Nginx Stream SNI 分流 | 必须 | Lucky HTTPS 反代 | Nginx Stream → Reality :1443 / Lucky :8443 |
 
 3x-ui V1.2.3 固定使用 `v3.8.5`，安装器及随后下载的仓库脚本固定到该签名 tag 当前对应的 commit `7ef22f94c950ff09f0870e2295fa65ad5968742c`；release archive 除上游 sidecar 外还会再按项目内置 SHA256 校验。只使用 **3x-ui 自带 Xray**，不会安装第二套独立 Xray。
 
@@ -125,19 +125,19 @@ Nginx Stream ssl_preread
 
 ## Lucky + Reality
 
-不安装 Nginx：
+Lucky 负责 HTTPS/反代，Nginx 只作为最外层的轻量 Stream SNI 路由器：
 
 ```text
 Internet :443
       ↓
-3x-ui bundled Xray Reality
-      ↓ unmatched normal HTTPS fallback
-127.0.0.1:8443 Lucky
-      ├─ xui.<domain>  -> 3x-ui
-      └─ node.<domain> -> Subscription
+Nginx Stream ssl_preread
+ ├─ Reality SNI -> 127.0.0.1:1443  3x-ui bundled Xray Reality
+ └─ normal TLS  -> 127.0.0.1:8443  Lucky
+                    ├─ xui.<domain>  -> 3x-ui
+                    └─ node.<domain> -> Subscription
 ```
 
-Lucky 固定使用已校验的 `2.27.2` release；证书由 Cloudflare DNS-01 + Certbot 获取后同步进 Lucky。V1.2.4 起不再假定默认账号 `666/666`：服务启动后从 root-only 的 `/opt/lucky/lucky.conf` 读取当前实际管理账号，只在本机 loopback API 上完成认证并立即轮换/对齐到 vps-init 持久化的随机账号密码。
+这里不能依赖 REALITY 自己把普通 HTTPS 回落到 Lucky：REALITY 对未通过鉴权的连接会直接转发到它的 `target`，因此必须在 Xray 前面按 SNI 分流。Lucky 固定使用已校验的 `2.27.2` release；证书由 Cloudflare DNS-01 + Certbot 获取后同步进 Lucky。脚本使用 Lucky 官方运行时 `-rResetUser` 恢复默认管理凭据后，立即通过 loopback API 轮换为 vps-init 持久化的随机账号密码；不会解析或修改加密的 `*.lkcf` 凭据字段。
 
 ## Cloudflare Token
 

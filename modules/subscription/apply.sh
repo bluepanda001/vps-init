@@ -129,5 +129,6 @@ module_subscription() {
   systemctl restart x-ui
   sleep 2
   secret_set SUBSCRIPTION_BASE_URL "$sub_uri"
+  secret_set SUBSCRIPTION_URL "${sub_uri}${SUB_ID}"
   log_ok "订阅服务已配置：$SUBSCRIPTION_EXPOSE_MODE_RESOLVED（公网只提供 HTTPS）。"
 }

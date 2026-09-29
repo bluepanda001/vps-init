@@ -45,6 +45,7 @@ VPS Init ${VERSION}
   vps-init verify [config.env]
   vps-init preflight [config.env]
   vps-init status [config.env]
+  vps-init info [config.env]
   vps-init secrets
   vps-init update
   vps-init logs
@@ -58,11 +59,57 @@ load_runtime_config() {
   validate_config
   REQUESTED_PROFILE="$PROFILE"
   state_load
+  PREVIOUS_DEPLOYED_PROFILE="${DEPLOYED_PROFILE:-}"
   PROFILE="$REQUESTED_PROFILE"
   resolve_auto_settings
-  if [[ -n "${DEPLOYED_PROFILE:-}" && "$DEPLOYED_PROFILE" != "$PROFILE" ]]; then
-    die "该 VPS 已由 vps-init 以 Profile=${DEPLOYED_PROFILE} 部署。当前不自动跨 Profile 迁移。"
+  if [[ -n "$PREVIOUS_DEPLOYED_PROFILE" && "$PREVIOUS_DEPLOYED_PROFILE" != "$PROFILE" && "${VPSINIT_ALLOW_PROFILE_SWITCH:-0}" != "1" ]]; then
+    die "该 VPS 已部署 Profile=${PREVIOUS_DEPLOYED_PROFILE}。如需切换到 ${PROFILE}，请运行交互向导确认迁移。"
   fi
+}
+
+prepare_profile_transition() {
+  [[ -n "${PREVIOUS_DEPLOYED_PROFILE:-}" ]] || return 0
+
+  if [[ "$PREVIOUS_DEPLOYED_PROFILE" != "$PROFILE" ]]; then
+    [[ "${VPSINIT_ALLOW_PROFILE_SWITCH:-0}" == "1" ]] || die "Profile 切换未获确认。"
+    log_warn "准备切换 Profile：${PREVIOUS_DEPLOYED_PROFILE} -> ${PROFILE}。仅停用/调整 vps-init 管理的冲突服务。"
+  fi
+
+  # Reconcile project-managed topology even when DEPLOYED_PROFILE already
+  # matches the requested Profile. A failed migration can otherwise leave the
+  # service graph half-switched while state/config still point at the last
+  # verified Profile.
+  case "$PROFILE" in
+    nginx-reality)
+      systemctl disable --now lucky >/dev/null 2>&1 || true
+      systemctl disable --now vps-init-landing >/dev/null 2>&1 || true
+      if ! systemctl is-active --quiet nginx 2>/dev/null &&
+         systemctl is-active --quiet x-ui 2>/dev/null &&
+         ss -H -ltnp 'sport = :443' 2>/dev/null | grep -qi xray; then
+        log_warn "检测到失败迁移残留：443 当前由 Xray 占用；先停止 x-ui，随后恢复 Nginx Stream + Reality 1443。"
+        systemctl stop x-ui >/dev/null 2>&1 || true
+      fi
+      ;;
+    reality-only)
+      systemctl disable --now nginx >/dev/null 2>&1 || true
+      systemctl disable --now lucky >/dev/null 2>&1 || true
+      systemctl disable --now vps-init-landing >/dev/null 2>&1 || true
+      ;;
+    lucky-reality)
+      if ! systemctl is-active --quiet nginx 2>/dev/null &&
+         systemctl is-active --quiet x-ui 2>/dev/null &&
+         ss -H -ltnp 'sport = :443' 2>/dev/null | grep -qi xray; then
+        log_warn "检测到旧版/失败迁移残留：443 当前由 Xray 占用；先停止 x-ui，随后切换为 Nginx Stream + Reality 1443 + Lucky 8443。"
+        systemctl stop x-ui >/dev/null 2>&1 || true
+      fi
+      ;;
+    base-only)
+      systemctl disable --now x-ui >/dev/null 2>&1 || true
+      systemctl disable --now nginx >/dev/null 2>&1 || true
+      systemctl disable --now lucky >/dev/null 2>&1 || true
+      systemctl disable --now vps-init-landing >/dev/null 2>&1 || true
+      ;;
+  esac
 }
 
 show_status_summary() {
@@ -81,6 +128,82 @@ show_status_summary() {
   fi
   [[ -f "$REPORT_FILE" ]] && echo "Report            : $REPORT_FILE"
   [[ -f "$SECRETS_FILE" ]] && echo "Secrets           : $SECRETS_FILE (600)"
+}
+
+show_info_summary() {
+  local cfg="$1" panel_url="" sub_base="" reality_public=""
+  load_runtime_config "$cfg"
+  state_load
+  echo "============================================================"
+  echo "                 VPS Init 部署信息"
+  echo "============================================================"
+  echo "VPS Init           : $VERSION"
+  echo "Deployed Version   : ${DEPLOYED_VERSION:-未记录}"
+  echo "Profile            : $PROFILE"
+  echo "Server             : ${SERVER_NAME:-}"
+  echo "IPv4               : ${SERVER_IP:-unknown}"
+  echo "SSH                : root@${SERVER_IP:-unknown}:${SSH_PORT}"
+  echo "SSH Auth           : vps-main / key-only"
+  echo
+  echo "已安装/管理组件："
+  printf '  %-18s %s\n' "Fail2ban" "$(systemctl is-active fail2ban 2>/dev/null || echo inactive)"
+  printf '  %-18s %s\n' "UFW" "$(ufw status 2>/dev/null | awk -F': ' '/^Status:/{print $2; exit}' || true)"
+  if profile_has_xui; then
+    printf '  %-18s %s\n' "3x-ui" "${XUI_VERSION:-unknown} ($(systemctl is-active x-ui 2>/dev/null || echo inactive))"
+    printf '  %-18s %s\n' "Xray" "3x-ui bundled"
+  fi
+  if [[ "$PROFILE" == "nginx-reality" ]]; then
+    printf '  %-18s %s\n' "Nginx" "$(systemctl is-active nginx 2>/dev/null || echo inactive)"
+  fi
+  if [[ "$PROFILE" == "lucky-reality" ]]; then
+    printf '  %-18s %s\n' "Lucky" "$(systemctl is-active lucky 2>/dev/null || echo inactive)"
+  fi
+  if is_true "${ENABLE_DOCKER:-false}"; then
+    printf '  %-18s %s\n' "Docker" "$(systemctl is-active docker 2>/dev/null || echo inactive)"
+  else
+    printf '  %-18s %s\n' "Docker" "未启用"
+  fi
+
+  if profile_has_xui; then
+    echo
+    echo "3x-ui / Reality："
+    echo "  Panel Listen      : 127.0.0.1:${XUI_PANEL_PORT:-unknown}"
+    echo "  Panel Path        : ${XUI_WEB_BASE_PATH:-unknown}"
+    echo "  Subscription      : 127.0.0.1:${SUBSCRIPTION_PORT_SELECTED:-${SUBSCRIPTION_PORT:-unknown}}${SUBSCRIPTION_PATH:-}"
+    echo "  Reality Target    : ${REALITY_TARGET_SELECTED:-unknown}"
+    echo "  Reality SNI       : ${REALITY_SERVER_NAME:-unknown}"
+    if [[ "$PROFILE" == "nginx-reality" ]]; then
+      echo "  Public 443        : Nginx Stream"
+      echo "  Reality Route     : 443 -> 127.0.0.1:1443"
+      echo "  HTTPS Route       : 443 -> 127.0.0.1:8443"
+    else
+      echo "  Public 443        : Xray Reality"
+    fi
+
+    if profile_has_domain; then
+      panel_url="https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"
+      sub_base="https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}"
+      reality_public="${NODE_DOMAIN}:443"
+    else
+      panel_url="SSH tunnel -> http://127.0.0.1:${XUI_PANEL_PORT}${XUI_WEB_BASE_PATH}"
+      sub_base="https://${SERVER_IP}:${SUBSCRIPTION_PORT_SELECTED:-$SUBSCRIPTION_PORT}${SUBSCRIPTION_PATH}"
+      reality_public="${SERVER_IP}:443"
+    fi
+    echo "  Reality Public    : $reality_public"
+    echo "  Panel URL         : $panel_url"
+    echo "  Subscription Base : $sub_base"
+  fi
+
+  echo
+  echo "重要文件："
+  echo "  Config             : $PERSIST_DIR/config.env"
+  echo "  State              : $STATE_FILE"
+  echo "  Report             : $REPORT_FILE"
+  echo "  Secrets            : $SECRETS_FILE"
+  echo
+  echo "敏感内容默认不显示。完整订阅 URL、3x-ui 密码和 Reality 分享链接请运行："
+  echo "  vps-init secrets"
+  echo "============================================================"
 }
 
 show_logs() {
@@ -127,35 +250,47 @@ menu() {
     cat <<'TXT'
   1. 一键部署 / 继续部署
   2. 运行验收
-  3. 查看当前状态
-  4. 查看敏感凭据
-  5. 编辑配置
-  6. 更新 VPS Init
-  7. 查看服务日志
-  8. 重新运行安装向导
+  3. 查看部署信息
+  4. 查看当前状态
+  5. 查看敏感凭据
+  6. 编辑配置
+  7. 更新 VPS Init
+  8. 查看服务日志
+  9. 重新运行安装向导
   0. 退出
 TXT
     local n
-    read -r -p "请选择 [0-8]: " n
+    read -r -p "请选择 [0-9]: " n
     case "$n" in
       1)
-        if [[ -f "$DEFAULT_CFG" ]]; then "$ROOT_DIR/vps-init" apply "$DEFAULT_CFG" || true; else "$ROOT_DIR/vps-init" wizard || true; fi
+        if [[ -f "$DEFAULT_CFG" ]]; then
+          "$ROOT_DIR/vps-init" apply "$DEFAULT_CFG" || true
+        else
+          local wizard_rc=0
+          "$ROOT_DIR/vps-init" wizard || wizard_rc=$?
+          (( wizard_rc == 42 )) && exit 0
+        fi
         ;;
       2) "$ROOT_DIR/vps-init" verify "$DEFAULT_CFG" || true ;;
-      3) show_status_summary "$DEFAULT_CFG" || true ;;
-      4)
+      3) show_info_summary "$DEFAULT_CFG" || true ;;
+      4) show_status_summary "$DEFAULT_CFG" || true ;;
+      5)
         if [[ -f "$SECRETS_FILE" ]]; then
           echo "警告：下面包含密码、API Token/节点参数等敏感信息。"
           if wizard_yesno "确认显示？" n; then cat "$SECRETS_FILE"; fi
         else echo "尚未生成凭据文件。"; fi
         ;;
-      5)
+      6)
         [[ -f "$DEFAULT_CFG" ]] || { echo "尚无配置，先运行安装向导。"; "$ROOT_DIR/vps-init" wizard; continue; }
         "${EDITOR:-vi}" "$DEFAULT_CFG"
         ;;
-      6) update_self || true ;;
-      7) show_logs || true ;;
-      8) "$ROOT_DIR/vps-init" wizard || true ;;
+      7) update_self || true ;;
+      8) show_logs || true ;;
+      9)
+        local wizard_rc=0
+        "$ROOT_DIR/vps-init" wizard || wizard_rc=$?
+        (( wizard_rc == 42 )) && exit 0
+        ;;
       0) exit 0 ;;
       *) echo "输入无效。" ;;
     esac
@@ -173,6 +308,7 @@ case "$cmd" in
   logs) require_root; show_logs; exit 0 ;;
   update) require_root; update_self; exit 0 ;;
   status) require_root; show_status_summary "$cfg"; exit 0 ;;
+  info) require_root; show_info_summary "$cfg"; exit 0 ;;
   apply|verify|preflight) ;;
   -h|--help|help) usage; exit 0 ;;
   *) usage; die "未知命令: $cmd" ;;
@@ -185,13 +321,13 @@ if [[ "$cmd" == preflight ]]; then core_preflight; exit 0; fi
 if [[ "$cmd" == verify ]]; then verify_all; exit $?; fi
 
 log_info "开始部署 Profile: $PROFILE"
+prepare_profile_transition
 core_preflight
 # SSH key is handled before package upgrades or other system mutations. If the
 # public key is missing, the run stops here after printing copyable PowerShell.
 core_ssh
 core_system
 resolve_runtime_ports
-persist_config "$cfg"
 core_swap
 core_network
 core_firewall
@@ -211,17 +347,20 @@ if profile_has_xui; then
   module_reality
   case "$PROFILE" in
     nginx-reality) module_nginx ;;
-    lucky-reality) module_lucky ;;
+    lucky-reality)
+      module_lucky
+      module_nginx
+      ;;
   esac
 fi
 
 copy_project_persistent
-persist_config "$cfg"
 
 echo >> "$SECRETS_FILE" 2>/dev/null || true
 chmod 600 "$SECRETS_FILE" 2>/dev/null || true
 
 if verify_all; then
+  persist_config "$cfg"
   state_set DEPLOYED_PROFILE "$PROFILE"
   state_set DEPLOYED_VERSION "$VERSION"
   state_set DEPLOYMENT_VERIFIED_AT "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"

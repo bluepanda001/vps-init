@@ -10,8 +10,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/bluepanda001/vps-init/main/i
 
 仓库自带 `.github/workflows/release.yml`。正式发布有两种等价入口：
 
-1. 推送标准 tag，例如 `v1.2.4`。
-2. 创建发布分支，例如 `release/v1.2.4`。Workflow 会校验仓库 `VERSION` 必须等于 `1.2.4`，然后创建对应 `v1.2.4` tag 和 Release。
+1. 推送标准 tag，例如 `v1.2.5`。
+2. 创建发布分支，例如 `release/v1.2.5`。Workflow 会校验仓库 `VERSION` 必须等于 `1.2.5`，然后创建对应 `v1.2.5` tag 和 Release。
 
 两种方式都会先运行 `verify/selftest.sh`。Self-test 产生的 Python bytecode 会清理掉，Release staging 还会再次排除 `__pycache__` / `*.pyc` / `*.pyo`，然后生成：
 

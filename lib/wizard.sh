@@ -101,9 +101,15 @@ wizard_offer_reinstall() {
   local -a cmd existing_keys
 
   echo
-  choice="$(wizard_select "系统准备："     "不重装，直接初始化当前系统（推荐：系统已经是干净 Ubuntu 24.04 时选这个）"     "一键 DD / 重装 Ubuntu 24.04 Minimal（bin456789/reinstall）")"
+  choice="$(wizard_select "系统准备：" \
+    "不重装，直接初始化当前系统（推荐：系统已经是干净 Ubuntu 24.04 时选这个）" \
+    "一键 DD / 重装 Ubuntu 24.04 Minimal（bin456789/reinstall）" \
+    "返回 / 取消本次向导")"
 
-  [[ "$choice" == 2 ]] || return 0
+  case "$choice" in
+    1) return 0 ;;
+    3) return 12 ;;
+  esac
 
   echo
   echo "============================================================"
@@ -174,11 +180,14 @@ wizard_offer_reinstall() {
   if wizard_yesno "现在立即 reboot 开始重装？" y; then
     sync
     reboot
-    exit 0
+    # reboot(8) may return before systemd actually tears down this SSH
+    # session. Propagate a special status so a parent menu does not print
+    # a misleading "按 Enter 返回菜单" while the machine is going down.
+    return 42
   fi
 
   echo "已暂缓 reboot。准备好后手动执行：reboot"
-  exit 0
+  return 12
 }
 
 wizard_shell_quote_value() {
@@ -291,30 +300,50 @@ wizard_collect() {
   echo
 
   # First decision: optionally reinstall to a known-clean Ubuntu before
-  # collecting any VPS Init settings.
-  wizard_offer_reinstall
+  # collecting any VPS Init settings. Major choice screens include an explicit
+  # way back so an accidental number does not force the rest of the wizard.
+  local prep_rc=0 mode_choice profile_choice current_port custom
+  while true; do
+    prep_rc=0
+    wizard_offer_reinstall || prep_rc=$?
+    (( prep_rc == 42 )) && return 42
+    (( prep_rc == 12 )) && return 12
 
-  local mode_choice profile_choice current_port custom="false"
-  mode_choice="$(wizard_select "安装方式：" "快速安装（推荐，只问必要项目）" "自定义安装")"
-  [[ "$mode_choice" == 2 ]] && custom="true"
+    mode_choice="$(wizard_select "安装方式：" \
+      "快速安装（推荐：沿用当前 SSH 端口，只问必要项目）" \
+      "自定义安装（可改端口/路径/订阅端口/Docker 等）" \
+      "返回系统准备")"
+    [[ "$mode_choice" == 3 ]] && continue
+    custom="false"
+    [[ "$mode_choice" == 2 ]] && custom="true"
 
-  profile_choice="$(wizard_select "请选择部署模式：" \
-    "Base Only - 系统初始化/安全/BBR/Swap，不安装 3x-ui" \
-    "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
-    "Nginx + Reality - Nginx Stream 443 分流，需要 Cloudflare 域名" \
-    "Lucky + Reality - Reality 占 443，HTTPS fallback 到 Lucky，需要 Cloudflare 域名")"
-  case "$profile_choice" in
-    1) W_PROFILE="base-only" ;;
-    2) W_PROFILE="reality-only" ;;
-    3) W_PROFILE="nginx-reality" ;;
-    4) W_PROFILE="lucky-reality" ;;
-  esac
+    profile_choice="$(wizard_select "请选择部署模式：" \
+      "Base Only - 系统初始化/安全/BBR/Swap，不安装 3x-ui" \
+      "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
+      "Nginx + Reality - Nginx Stream 443 分流，需要 Cloudflare 域名" \
+      "Lucky + Reality - Nginx Stream 443 分流，Reality + Lucky HTTPS，需要 Cloudflare 域名" \
+      "返回安装方式")"
+    [[ "$profile_choice" == 5 ]] && continue
+    case "$profile_choice" in
+      1) W_PROFILE="base-only" ;;
+      2) W_PROFILE="reality-only" ;;
+      3) W_PROFILE="nginx-reality" ;;
+      4) W_PROFILE="lucky-reality" ;;
+    esac
+    break
+  done
+  W_ALLOW_PROFILE_SWITCH="0"
   state_load
   if [[ -n "${DEPLOYED_PROFILE:-}" && "$DEPLOYED_PROFILE" != "$W_PROFILE" ]]; then
-    echo "这台 VPS 已部署 Profile=${DEPLOYED_PROFILE}。"
-    echo "为避免改变 443/TLS 拓扑，向导不会把它自动切换为 ${W_PROFILE}。"
-    echo "如需换 Profile，建议新 VPS 或按 RUNBOOK 手工迁移。"
-    return 11
+    echo
+    echo "这台 VPS 当前已部署 Profile=${DEPLOYED_PROFILE}，准备切换为 ${W_PROFILE}。"
+    echo "迁移只会停用/调整 vps-init 自己管理的 Nginx/Lucky/Xray 拓扑，不会清盘。"
+    if wizard_yesno "确认执行 Profile 迁移？" n; then
+      W_ALLOW_PROFILE_SWITCH="1"
+    else
+      echo "已取消 Profile 迁移。"
+      return 12
+    fi
   fi
 
   W_SERVER_IP="$(get_public_ipv4 || true)"
@@ -389,10 +418,42 @@ wizard_collect() {
 }
 
 wizard_run() {
-  local cfg="${1:-$PERSIST_DIR/config.env}"
+  local cfg="${1:-$PERSIST_DIR/config.env}" pending backup="" rc=0 rollback_rc=0 previous_profile=""
   ensure_dir "$(dirname "$cfg")"
-  wizard_collect || return $?
-  wizard_write_config "$cfg"
-  log_ok "配置已生成：$cfg"
-  "$ROOT_DIR/vps-init" apply "$cfg"
+  state_load
+  previous_profile="${DEPLOYED_PROFILE:-}"
+  if [[ -f "$cfg" && -n "$previous_profile" ]]; then
+    backup="$(mktemp "$(dirname "$cfg")/.config.env.rollback.XXXXXX")"
+    cp -a "$cfg" "$backup"
+    chmod 600 "$backup"
+  fi
+
+  wizard_collect || { [[ -n "$backup" ]] && rm -f "$backup"; return $?; }
+
+  # Keep the last verified config intact until the candidate deployment passes
+  # verification. A failed Profile migration must not leave config.env pointing
+  # at a topology that DEPLOYED_PROFILE never accepted.
+  pending="$(mktemp "$(dirname "$cfg")/.config.env.pending.XXXXXX")"
+  wizard_write_config "$pending"
+  log_ok "候选配置已生成；验收通过后才会提交到：$cfg"
+
+  VPSINIT_ALLOW_PROFILE_SWITCH="${W_ALLOW_PROFILE_SWITCH:-0}" "$ROOT_DIR/vps-init" apply "$pending" || rc=$?
+  if (( rc == 0 )); then
+    install -m 600 "$pending" "$cfg"
+    log_ok "部署与验收通过，配置已提交：$cfg"
+  else
+    log_warn "部署未通过，原有已验证配置未被候选配置覆盖。"
+    if [[ -n "$backup" && -n "$previous_profile" ]]; then
+      log_warn "尝试自动恢复上一个已验证 Profile=${previous_profile} 的服务拓扑。"
+      VPSINIT_ALLOW_PROFILE_SWITCH=1 "$ROOT_DIR/vps-init" apply "$backup" || rollback_rc=$?
+      if (( rollback_rc == 0 )); then
+        log_ok "已恢复上一个已验证 Profile=${previous_profile}。"
+      else
+        log_warn "自动回滚未完全成功（exit=${rollback_rc}）；保留原配置，请运行 vps-init apply 重新收敛。"
+      fi
+    fi
+  fi
+  rm -f "$pending"
+  [[ -n "$backup" ]] && rm -f "$backup"
+  return "$rc"
 }

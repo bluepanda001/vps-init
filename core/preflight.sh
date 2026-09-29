@@ -4,6 +4,9 @@ core_preflight() {
   local had_state=false
   [[ -f "$STATE_FILE" ]] && had_state=true
   [[ -r /etc/os-release ]] || die "无法读取 /etc/os-release。"
+  # /etc/os-release defines VERSION too. Keep those names local so sourcing it
+  # cannot overwrite the project's global VERSION used for DEPLOYED_VERSION.
+  local ID="" VERSION_ID="" PRETTY_NAME="" VERSION=""
   # shellcheck disable=SC1091
   source /etc/os-release
   [[ "${ID:-}" == "ubuntu" ]] || die "V1 仅支持 Ubuntu 24.04 LTS；当前: ${PRETTY_NAME:-unknown}"
@@ -37,7 +40,7 @@ core_preflight() {
   log_info "当前监听端口："
   ss -ltnup 2>/dev/null | sed -n '1,30p' || true
 
-  if [[ "$PROFILE" == "reality-only" || "$PROFILE" == "lucky-reality" ]]; then
+  if [[ "$PROFILE" == "reality-only" ]]; then
     if port_in_use 443 && ! systemctl is-active --quiet x-ui 2>/dev/null; then
       die "443 已被其他服务占用。为避免覆盖现有服务，已停止。"
     fi
@@ -45,7 +48,7 @@ core_preflight() {
   if [[ "$PROFILE" == "reality-only" ]] && port_in_use 80; then
     die "reality-only 的 3x-ui IP SSL 需要 80/tcp 做 HTTP-01，但 80 已被占用。"
   fi
-  if [[ "$PROFILE" == "nginx-reality" ]] && port_in_use 443 && ! systemctl is-active --quiet nginx 2>/dev/null; then
+  if [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]] && port_in_use 443 && ! systemctl is-active --quiet nginx 2>/dev/null; then
     die "443 已被非 Nginx 服务占用。为避免覆盖现有服务，已停止。"
   fi
 
@@ -53,7 +56,7 @@ core_preflight() {
   if [[ "$had_state" == false ]]; then
     local existing=()
     profile_has_xui && [[ -x /usr/local/x-ui/x-ui ]] && existing+=("3x-ui")
-    [[ "$PROFILE" == "nginx-reality" ]] && command_exists nginx && existing+=("nginx")
+    [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]] && command_exists nginx && existing+=("nginx")
     [[ "$PROFILE" == "lucky-reality" && -x /opt/lucky/lucky ]] && existing+=("Lucky")
     if (( ${#existing[@]} > 0 )); then
       log_warn "检测到并非由本项目 state 标记的已有组件：${existing[*]}"
@@ -61,7 +64,7 @@ core_preflight() {
         die "为保护现有 VPS 配置，已停止。建议在全新 Ubuntu 24.04 VPS 上使用。"
       fi
     fi
-    if command_exists ufw && ufw status 2>/dev/null | grep -q '^Status: active'; then
+    if command_exists ufw && ufw status 2>/dev/null | grep '^Status: active' >/dev/null; then
       log_warn "检测到已有 UFW 规则。apply 会保留人工规则，只刷新带 vps-init 注释的项目规则，并设置默认入站/出站策略。"
       if ! confirm "允许 vps-init 管理自己的 UFW 规则并设置默认策略？" n; then
         die "未授权修改 UFW，已停止。"

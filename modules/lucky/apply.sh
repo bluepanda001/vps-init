@@ -38,9 +38,6 @@ module_lucky() {
     fi
     rm -rf "$tmp"
   fi
-  # Lucky v2.27.2 会在指定配置文件不存在时生成默认配置；空 JSON 文件反而会导致解析失败。
-  [[ -f /opt/lucky/lucky.conf && ! -s /opt/lucky/lucky.conf ]] && rm -f /opt/lucky/lucky.conf
-  [[ -f /opt/lucky/lucky.conf ]] && chmod 600 /opt/lucky/lucky.conf
   cat > /etc/systemd/system/lucky.service <<'UNIT'
 [Unit]
 Description=Lucky
@@ -48,17 +45,15 @@ After=network-online.target
 Wants=network-online.target
 [Service]
 Type=simple
-ExecStart=/opt/lucky/lucky -c /opt/lucky/lucky.conf
+ExecStart=/opt/lucky/lucky -cd /opt/lucky
 Restart=on-failure
 RestartSec=3
 WorkingDirectory=/opt/lucky
 [Install]
 WantedBy=multi-user.target
 UNIT
-  systemctl daemon-reload; systemctl enable --now lucky
-  for _ in $(seq 1 20); do curl -fsS --max-time 2 http://127.0.0.1:16601/version >/dev/null 2>&1 && break; sleep 1; done
-  curl -fsS --max-time 3 http://127.0.0.1:16601/version >/dev/null || die "Lucky 后台未启动。"
-  [[ -f /opt/lucky/lucky.conf ]] && chmod 600 /opt/lucky/lucky.conf
+  systemctl daemon-reload
+  systemctl enable lucky
 
   state_load
   if [[ -z "${LUCKY_USERNAME:-}" || -z "${LUCKY_PASSWORD:-}" ]]; then
@@ -68,16 +63,30 @@ UNIT
     state_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
   fi
 
-  # Do not assume Lucky's upstream default credential. The running service uses
-  # /opt/lucky/lucky.conf as its source of truth; bootstrap from the actual
-  # root-only credential stored there and rotate/reconcile it to our persisted
-  # random credential. This also makes a rerun recover from a pre-existing
-  # Lucky config whose admin pair is not 666/666.
-  python3 "$ROOT_DIR/modules/lucky/lucky_api.py" ensure-admin \
-    --config /opt/lucky/lucky.conf \
-    --new-user "$LUCKY_USERNAME" \
-    --new-password "$LUCKY_PASSWORD" >/dev/null ||     die "无法根据 /opt/lucky/lucky.conf 接管 Lucky 管理账号。"
-  chmod 600 /opt/lucky/lucky.conf
+  # Lucky 2.27.2 stores its active configuration as encrypted/modular *.lkcf
+  # files. Its documented runtime control command resets credentials to
+  # 666:666; do NOT pass -cd to runtime control commands. Then immediately
+  # rotate to project-managed random credentials through the authenticated API.
+  systemctl start lucky
+  for _ in $(seq 1 20); do curl -fsS --max-time 2 http://127.0.0.1:16601/version >/dev/null 2>&1 && break; sleep 1; done
+  curl -fsS --max-time 3 http://127.0.0.1:16601/version >/dev/null || die "Lucky 后台未启动。"
+
+  if ! python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+      --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" status >/dev/null 2>&1; then
+    /opt/lucky/lucky -rUnlock >/dev/null 2>&1 || true
+    /opt/lucky/lucky -rResetUser >/dev/null || die "Lucky 官方运行时命令无法重置管理凭据。"
+    sleep 1
+    python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+      --user "666" --password "666" set-admin \
+      --new-user "$LUCKY_USERNAME" --new-password "$LUCKY_PASSWORD" >/dev/null || \
+      die "Lucky 默认凭据重置成功后，无法写入项目管理凭据。"
+    sleep 1
+  fi
+
+  python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+    --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" status >/dev/null || \
+    die "Lucky 项目管理凭据验证失败。"
+
   secret_set LUCKY_USERNAME "$LUCKY_USERNAME"; secret_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
   secret_set LUCKY_LOCAL_URL "http://127.0.0.1:16601"
 
@@ -100,5 +109,5 @@ HOOK
   chmod 755 /etc/letsencrypt/renewal-hooks/deploy/90-vps-init-lucky
   secret_set XUI_PUBLIC_URL "https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"
   secret_set SUBSCRIPTION_BASE_URL "https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}"
-  log_ok "Lucky 8443 HTTPS 后端与两个域名反代已配置；公网 443 仍由 Reality 占用。"
+  log_ok "Lucky 8443 HTTPS 后端与两个域名反代已配置；公网 443 将由 Nginx Stream 统一分流。"
 }
