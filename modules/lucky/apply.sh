@@ -52,7 +52,11 @@ WorkingDirectory=/opt/lucky
 [Install]
 WantedBy=multi-user.target
 UNIT
-  systemctl daemon-reload; systemctl enable --now lucky
+  systemctl daemon-reload
+  systemctl enable lucky
+  # Always restart after rewriting the unit so upgrades from older vps-init
+  # revisions actually switch Lucky to the supported -cd config-directory mode.
+  systemctl restart lucky
   for _ in $(seq 1 20); do curl -fsS --max-time 2 http://127.0.0.1:16601/version >/dev/null 2>&1 && break; sleep 1; done
   curl -fsS --max-time 3 http://127.0.0.1:16601/version >/dev/null || die "Lucky 后台未启动。"
   state_load
