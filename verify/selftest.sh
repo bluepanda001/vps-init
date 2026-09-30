@@ -210,20 +210,6 @@ grep -q 'state_set LUCKY_PASSWORD' lib/credentials.sh
 grep -q 'secret_set LUCKY_PASSWORD' lib/credentials.sh
 grep -q '/opt/lucky/lucky -rResetUser' lib/credentials.sh
 grep -q 'Authorization: Bearer' lib/credentials.sh
-
-# V1.3.0: reverse proxy center. Applications remain user-managed.
-grep -q 'source "$ROOT_DIR/proxy/manager.sh"' vps-init
-grep -q 'vps-init proxy' vps-init
-grep -q 'PROXY_STATE_DIR=' proxy/common.sh
-grep -q 'listen 127.0.0.1:8443 ssl' proxy/nginx.sh
-grep -q 'proxy_pass .*://.*:' proxy/nginx.sh
-grep -q -- '--proxied' proxy/nginx.sh
-grep -q '不会删除你的 Docker/应用' proxy/manager.sh
-grep -q '请先把应用本身安装并运行正常' proxy/manager.sh
-if find . -path './apps/*' -type f | grep . >/dev/null; then
-  echo 'FAIL: v1.3.0 proxy center must not ship application installers' >&2; exit 1
-fi
-
 if grep -q 'XUI_PASSWORD=' config.env.example; then
   echo 'FAIL: panel passwords must not be stored in normal config.env' >&2; exit 1
 fi
@@ -253,7 +239,7 @@ s=Path("vps-init").read_text()
 assert s.index("module_nginx") < s.index("optional_cf_ws", s.index("if profile_has_xui"))
 PY_CFWS_ORDER
 
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.3.0" ]]
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.8" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
