@@ -9,6 +9,34 @@ import argparse, json, os, sys, urllib.error, urllib.request
 from typing import Any
 
 
+RISKY_REALITY_SUFFIXES = (
+    "cloudflare.com", "cloudflare.net", "workers.dev", "pages.dev",
+)
+
+def normalize_target(target: str) -> tuple[str,str]:
+    target=target.strip()
+    if not target:
+        raise RuntimeError("Reality target is empty")
+    if ":" not in target:
+        target += ":443"
+    host=target.rsplit(":",1)[0].strip("[]").lower().rstrip(".")
+    return target,host
+
+def target_is_high_risk(target: str) -> bool:
+    try:
+        _,host=normalize_target(target)
+    except Exception:
+        return True
+    return any(host == suffix or host.endswith("." + suffix) for suffix in RISKY_REALITY_SUFFIXES)
+
+def fallback_limit(after_bytes: int, bytes_per_sec: int, burst_bytes_per_sec: int) -> dict[str,int]:
+    return {
+        "afterBytes": max(0,int(after_bytes)),
+        "bytesPerSec": max(0,int(bytes_per_sec)),
+        "burstBytesPerSec": max(0,int(burst_bytes_per_sec)),
+    }
+
+
 def req(base: str, token: str, method: str, path: str, body: Any | None = None) -> dict[str, Any]:
     data = None if body is None else json.dumps(body, separators=(",", ":")).encode()
     headers = {"Accept":"application/json", "Authorization":f"Bearer {token}", "User-Agent":"vps-init/1"}
@@ -49,21 +77,27 @@ def list_inbounds(base: str, token: str) -> list[dict[str, Any]]:
 
 def select_target(base: str, token: str, mode: str, manual: str, candidates: str) -> tuple[str,str,dict[str,Any] | None]:
     if mode == "manual":
-        target=manual.strip()
-        if not target: raise RuntimeError("manual Reality target is empty")
-        if ":" not in target: target += ":443"
-        host=target.rsplit(":",1)[0].strip("[]")
+        target,host=normalize_target(manual)
+        if target_is_high_risk(target):
+            raise RuntimeError(f"refusing high-risk Reality target {host}: shared Cloudflare targets may relay failed-auth traffic")
         return target,host,None
     obj=get_obj(base,token,"POST","panel/api/server/scanRealityTargets",{"targets":candidates})
     rows=obj if isinstance(obj,list) else []
-    feasible=[x for x in rows if isinstance(x,dict) and x.get("feasible") is True and not x.get("privateTarget")]
+    feasible=[
+        x for x in rows
+        if isinstance(x,dict)
+        and x.get("feasible") is True
+        and not x.get("privateTarget")
+        and not target_is_high_risk(str(x.get("target") or x.get("host") or ""))
+    ]
     if not feasible:
         summary=[{"target":x.get("target"),"feasible":x.get("feasible"),"reason":x.get("reason")} for x in rows if isinstance(x,dict)]
-        raise RuntimeError("no feasible Reality target: "+json.dumps(summary,ensure_ascii=False))
+        raise RuntimeError("no safe feasible Reality target: "+json.dumps(summary,ensure_ascii=False))
     best=feasible[0]
     target=str(best.get("target") or "").strip()
     host=str(best.get("host") or "").strip()
     if not target or not host: raise RuntimeError("Reality scanner returned incomplete best result")
+    target,host=normalize_target(target)
     return target,host,best
 
 
@@ -92,8 +126,35 @@ def create_reality(args: argparse.Namespace) -> dict[str,Any]:
         existing_port=int(existing.get("port") or 0)
         if existing.get("protocol") != "vless":
             raise RuntimeError(f"existing {args.remark} is not VLESS; refusing automatic migration")
+
+        desired_target=target
+        desired_host=str(names[0]) if names else ""
+        target_changed=False
+        # Manual mode means the operator explicitly asked for this target.
+        # Auto mode normally keeps a stable existing target, but automatically
+        # migrates known high-risk Cloudflare targets left by older releases.
+        if args.target_mode == "manual":
+            desired_target,desired_host,_=select_target(args.base,args.token,"manual",args.target,args.candidates)
+            target_changed=(desired_target != target or desired_host != (str(names[0]) if names else ""))
+        elif not target or target_is_high_risk(target):
+            desired_target,desired_host,_=select_target(args.base,args.token,"auto","",args.candidates)
+            target_changed=True
+
+        upload_limit=fallback_limit(args.fallback_after_bytes,args.fallback_upload_bps,args.fallback_upload_burst_bps)
+        download_limit=fallback_limit(args.fallback_after_bytes,args.fallback_download_bps,args.fallback_download_burst_bps)
+        limit_changed=(rs.get("limitFallbackUpload") != upload_limit or rs.get("limitFallbackDownload") != download_limit)
+        if target_changed:
+            rs["target"]=desired_target
+            rs.pop("dest",None)
+            rs["serverNames"]=[desired_host]
+        rs["limitFallbackUpload"]=upload_limit
+        rs["limitFallbackDownload"]=download_limit
+        st["realitySettings"]=rs
+        target=desired_target
+        names=[desired_host] if desired_host else []
+
         migrated=False
-        if existing_port != args.port or existing_listen != args.listen:
+        if existing_port != args.port or existing_listen != args.listen or target_changed or limit_changed:
             sniffing=existing.get("sniffing")
             if isinstance(sniffing,str):
                 try: sniffing=json.loads(sniffing)
@@ -137,7 +198,7 @@ def create_reality(args: argparse.Namespace) -> dict[str,Any]:
       "enable":True,"remark":args.remark,"listen":args.listen,"port":args.port,"protocol":"vless",
       "expiryTime":0,"total":0,
       "settings":{"clients":[{"id":uuid,"email":args.email,"flow":"xtls-rprx-vision","limitIp":0,"totalGB":0,"expiryTime":0,"enable":True,"tgId":0,"subId":args.sub_id,"comment":"","reset":0}],"decryption":"none","encryption":"none","fallbacks":[]},
-      "streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":False,"xver":0,"target":target,"serverNames":[host],"privateKey":priv,"minClientVer":"","maxClientVer":"","maxTimediff":0,"shortIds":[short_id],"mldsa65Seed":"","settings":{"publicKey":pub,"fingerprint":"chrome","serverName":"","spiderX":"/","mldsa65Verify":""}},"tcpSettings":{"acceptProxyProtocol":False,"header":{"type":"none"}}},
+      "streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":False,"xver":0,"target":target,"serverNames":[host],"privateKey":priv,"minClientVer":"","maxClientVer":"","maxTimediff":0,"shortIds":[short_id],"mldsa65Seed":"","limitFallbackUpload":fallback_limit(args.fallback_after_bytes,args.fallback_upload_bps,args.fallback_upload_burst_bps),"limitFallbackDownload":fallback_limit(args.fallback_after_bytes,args.fallback_download_bps,args.fallback_download_burst_bps),"settings":{"publicKey":pub,"fingerprint":"chrome","serverName":"","spiderX":"/","mldsa65Verify":""}},"tcpSettings":{"acceptProxyProtocol":False,"header":{"type":"none"}}},
       "sniffing":{"enabled":True,"destOverride":["http","tls","quic","fakedns"],"metadataOnly":False,"routeOnly":False,"ipsExcluded":[],"domainsExcluded":[]}
     }
     req(args.base,args.token,"POST","panel/api/inbounds/add",payload)
@@ -263,6 +324,11 @@ def main() -> int:
     p.add_argument("--email",required=True); p.add_argument("--sub-id",required=True); p.add_argument("--short-id",required=True)
     p.add_argument("--target-mode",choices=["auto","manual"],required=True); p.add_argument("--target",default=""); p.add_argument("--candidates",default="")
     p.add_argument("--fallback",default="")
+    p.add_argument("--fallback-after-bytes",type=int,default=1048576)
+    p.add_argument("--fallback-upload-bps",type=int,default=65536)
+    p.add_argument("--fallback-upload-burst-bps",type=int,default=131072)
+    p.add_argument("--fallback-download-bps",type=int,default=131072)
+    p.add_argument("--fallback-download-burst-bps",type=int,default=262144)
     p=sp.add_parser("create-ws")
     p.add_argument("--remark",default="VPSINIT-CDN-WS"); p.add_argument("--listen",required=True); p.add_argument("--port",type=int,required=True)
     p.add_argument("--email",required=True); p.add_argument("--sub-id",required=True); p.add_argument("--path",required=True)
