@@ -197,6 +197,19 @@ grep -q 'VPSINIT_LUCKY_USERNAME_INPUT' modules/lucky/apply.sh
 grep -q 'wizard_collect_admin_credentials' lib/wizard.sh
 grep -q 'vps-init secrets --raw' vps-init
 grep -q '【一、3x-ui 面板】' vps-init
+
+# V1.2.8: credentials changed through vps-init must update the live service,
+# root-only state, and root-only secrets together.
+grep -q 'source "$ROOT_DIR/lib/credentials.sh"' vps-init
+grep -q 'vps-init passwd' vps-init
+grep -q 'credential_change_xui' lib/credentials.sh
+grep -q 'credential_change_lucky' lib/credentials.sh
+grep -q 'state_set XUI_PASSWORD' lib/credentials.sh
+grep -q 'secret_set XUI_PASSWORD' lib/credentials.sh
+grep -q 'state_set LUCKY_PASSWORD' lib/credentials.sh
+grep -q 'secret_set LUCKY_PASSWORD' lib/credentials.sh
+grep -q '/opt/lucky/lucky -rResetUser' lib/credentials.sh
+grep -q 'Authorization: Bearer' lib/credentials.sh
 if grep -q 'XUI_PASSWORD=' config.env.example; then
   echo 'FAIL: panel passwords must not be stored in normal config.env' >&2; exit 1
 fi
@@ -226,7 +239,7 @@ s=Path("vps-init").read_text()
 assert s.index("module_nginx") < s.index("optional_cf_ws", s.index("if profile_has_xui"))
 PY_CFWS_ORDER
 
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.7" ]]
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.8" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
