@@ -389,15 +389,15 @@ wizard_collect() {
     profile_choice="$(wizard_select "请选择部署模式：" \
       "Base Only - 系统初始化/安全/BBR/Swap，不安装 3x-ui" \
       "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
-      "Nginx + Reality - Nginx Stream 443 分流，需要 Cloudflare 域名" \
-      "Lucky + Reality - Nginx Stream 443 分流，Reality + Lucky HTTPS，需要 Cloudflare 域名" \
+      "Lucky + Reality - 推荐：图形化 Web Gateway + Reality，共用公网 443，需要 Cloudflare 域名" \
+      "Nginx + Reality - 轻量/高级：纯 Nginx 配置 + Reality，需要 Cloudflare 域名" \
       "返回安装方式")"
     [[ "$profile_choice" == 5 ]] && continue
     case "$profile_choice" in
       1) W_PROFILE="base-only" ;;
       2) W_PROFILE="reality-only" ;;
-      3) W_PROFILE="nginx-reality" ;;
-      4) W_PROFILE="lucky-reality" ;;
+      3) W_PROFILE="lucky-reality" ;;
+      4) W_PROFILE="nginx-reality" ;;
     esac
     break
   done
