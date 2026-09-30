@@ -152,21 +152,88 @@ def create_reality(args: argparse.Namespace) -> dict[str,Any]:
 
 
 
+
+def create_ws(args: argparse.Namespace) -> dict[str,Any]:
+    existing=next((x for x in list_inbounds(args.base,args.token) if x.get("remark")==args.remark),None)
+    if existing:
+        settings=existing.get("settings")
+        if isinstance(settings,str):
+            try: settings=json.loads(settings)
+            except Exception: settings={}
+        settings=settings if isinstance(settings,dict) else {}
+        clients=settings.get("clients") if isinstance(settings.get("clients"),list) else []
+        cl=clients[0] if clients and isinstance(clients[0],dict) else {}
+        st=existing.get("streamSettings")
+        if isinstance(st,str):
+            try: st=json.loads(st)
+            except Exception: st={}
+        st=st if isinstance(st,dict) else {}
+        ws=st.get("wsSettings") if isinstance(st.get("wsSettings"),dict) else {}
+        inbound_id=existing.get("id")
+        listen=str(existing.get("listen") or "")
+        port=int(existing.get("port") or 0)
+        path=str(ws.get("path") or "")
+        migrated=False
+        if existing.get("protocol") != "vless":
+            raise RuntimeError(f"existing {args.remark} is not VLESS; refusing automatic migration")
+        if port != args.port or listen != args.listen or path != args.path or st.get("network") != "ws" or st.get("security") != "none":
+            st={
+              "network":"ws","security":"none",
+              "wsSettings":{"acceptProxyProtocol":False,"path":args.path,"host":"","headers":{},"heartbeatPeriod":0}
+            }
+            payload={
+              "enable":True,"remark":args.remark,"listen":args.listen,"port":args.port,"protocol":"vless",
+              "expiryTime":int(existing.get("expiryTime") or 0),"total":int(existing.get("total") or 0),
+              "settings":settings,"streamSettings":st,
+              "sniffing":{"enabled":True,"destOverride":["http","tls","quic","fakedns"],"metadataOnly":False,"routeOnly":False,"ipsExcluded":[],"domainsExcluded":[]},
+              "disableFlow":bool(existing.get("disableFlow") or False),
+              "subSortIndex":int(existing.get("subSortIndex") or 2),
+              "shareAddrStrategy":str(existing.get("shareAddrStrategy") or "node"),
+              "shareAddr":str(existing.get("shareAddr") or "")
+            }
+            req(args.base,args.token,"POST",f"panel/api/inbounds/update/{inbound_id}",payload)
+            migrated=True
+        return {"created":False,"migrated":migrated,"id":inbound_id,"remark":args.remark,
+                "uuid":cl.get("id",""),"subId":cl.get("subId",""),"path":args.path}
+
+    uuid=get_obj(args.base,args.token,"GET","panel/api/server/getNewUUID")
+    if isinstance(uuid,dict): uuid=uuid.get("uuid") or uuid.get("id")
+    uuid=str(uuid or "").strip()
+    if not uuid: raise RuntimeError("UUID generation failed")
+    payload={
+      "enable":True,"remark":args.remark,"listen":args.listen,"port":args.port,"protocol":"vless",
+      "expiryTime":0,"total":0,
+      "settings":{"clients":[{"id":uuid,"email":args.email,"flow":"","limitIp":0,"totalGB":0,"expiryTime":0,"enable":True,"tgId":0,"subId":args.sub_id,"comment":"","reset":0}],"decryption":"none","encryption":"none","fallbacks":[]},
+      "streamSettings":{"network":"ws","security":"none","wsSettings":{"acceptProxyProtocol":False,"path":args.path,"host":"","headers":{},"heartbeatPeriod":0}},
+      "sniffing":{"enabled":True,"destOverride":["http","tls","quic","fakedns"],"metadataOnly":False,"routeOnly":False,"ipsExcluded":[],"domainsExcluded":[]},
+      "subSortIndex":2
+    }
+    req(args.base,args.token,"POST","panel/api/inbounds/add",payload)
+    created=next((x for x in list_inbounds(args.base,args.token) if x.get("remark")==args.remark),None)
+    inbound_id=created.get("id") if isinstance(created,dict) else None
+    return {"created":True,"id":inbound_id,"uuid":uuid,"subId":args.sub_id,"path":args.path}
+
+
+
 def list_hosts(base: str, token: str) -> list[dict[str, Any]]:
     obj=get_obj(base,token,"GET","panel/api/hosts/list")
     return [x for x in obj if isinstance(x,dict)] if isinstance(obj,list) else []
 
 
 def ensure_host(base: str, token: str, inbound_id: int, remark: str, address: str,
-                port: int, sni: str, fingerprint: str) -> dict[str,Any]:
+                port: int, sni: str, fingerprint: str, security: str = "same",
+                host_header: str = "", path: str = "", tags: list[str] | None = None) -> dict[str,Any]:
     body={
       "inboundIds":[inbound_id],
       "remark":remark,
-      "hosts":[f"{address}:{port}"],
+      "hosts":[address],
       "port":port,
-      "security":"same",
+      "security":security,
       "sni":sni,
+      "hostHeader":host_header,
+      "path":path,
       "fingerprint":fingerprint,
+      "tags":tags or [],
     }
     existing=next((x for x in list_hosts(base,token) if x.get("remark")==remark),None)
     if existing and existing.get("groupId"):
@@ -190,6 +257,9 @@ def main() -> int:
     p.add_argument("--email",required=True); p.add_argument("--sub-id",required=True); p.add_argument("--short-id",required=True)
     p.add_argument("--target-mode",choices=["auto","manual"],required=True); p.add_argument("--target",default=""); p.add_argument("--candidates",default="")
     p.add_argument("--fallback",default="")
+    p=sp.add_parser("create-ws")
+    p.add_argument("--remark",default="VPSINIT-CDN-WS"); p.add_argument("--listen",required=True); p.add_argument("--port",type=int,required=True)
+    p.add_argument("--email",required=True); p.add_argument("--sub-id",required=True); p.add_argument("--path",required=True)
     sp.add_parser("list-inbounds")
     sp.add_parser("list-hosts")
     p=sp.add_parser("ensure-host")
@@ -199,15 +269,20 @@ def main() -> int:
     p.add_argument("--port",type=int,required=True)
     p.add_argument("--sni",default="")
     p.add_argument("--fingerprint",default="chrome")
+    p.add_argument("--security",choices=["same","tls","none","reality"],default="same")
+    p.add_argument("--host-header",default="")
+    p.add_argument("--path",default="")
+    p.add_argument("--tags",default="")
     sp.add_parser("all-links")
     args=ap.parse_args()
     try:
       if args.cmd=="patch-settings": patch_settings(args.base,args.token,json.loads(args.json)); out={"ok":True}
       elif args.cmd=="scan": out=get_obj(args.base,args.token,"POST","panel/api/server/scanRealityTargets",{"targets":args.candidates})
       elif args.cmd=="create-reality": out=create_reality(args)
+      elif args.cmd=="create-ws": out=create_ws(args)
       elif args.cmd=="list-inbounds": out=list_inbounds(args.base,args.token)
       elif args.cmd=="list-hosts": out=list_hosts(args.base,args.token)
-      elif args.cmd=="ensure-host": out=ensure_host(args.base,args.token,args.inbound_id,args.remark,args.address,args.port,args.sni,args.fingerprint)
+      elif args.cmd=="ensure-host": out=ensure_host(args.base,args.token,args.inbound_id,args.remark,args.address,args.port,args.sni,args.fingerprint,args.security,args.host_header,args.path,[x for x in args.tags.split(",") if x])
       elif args.cmd=="all-links": out=get_obj(args.base,args.token,"GET","panel/api/inbounds/allLinks")
       else: raise RuntimeError("unknown command")
       print(json.dumps(out,ensure_ascii=False,separators=(",",":")))
