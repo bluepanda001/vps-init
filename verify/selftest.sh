@@ -183,13 +183,38 @@ grep -q 'vps-init-extra-sni.map' modules/nginx/apply.sh
 grep -q 'Cloudflare CDN WS end-to-end proxy' verify/verify.sh
 grep -q 'Mihomo subscription advertises CDN WS endpoint' verify/verify.sh
 grep -q 'W_ENABLE_CF_WS' lib/wizard.sh
+
+# V1.2.7: REALITY fallback abuse protection, explicit Clash subscription,
+# user-supplied panel credentials, and structured secrets output.
+grep -q 'limitFallbackUpload' modules/3x-ui/xui_api.py
+grep -q 'limitFallbackDownload' modules/3x-ui/xui_api.py
+grep -q 'refusing high-risk Reality target' modules/3x-ui/xui_api.py
+grep -q 'REALITY_FALLBACK_DOWNLOAD_BPS' modules/reality/apply.sh
+grep -q 'SUBSCRIPTION_CLASH_URL' modules/subscription/apply.sh
+grep -q 'SUBSCRIPTION_MIHOMO_URL' modules/subscription/apply.sh
+grep -q 'VPSINIT_XUI_USERNAME_INPUT' modules/3x-ui/apply.sh
+grep -q 'VPSINIT_LUCKY_USERNAME_INPUT' modules/lucky/apply.sh
+grep -q 'wizard_collect_admin_credentials' lib/wizard.sh
+grep -q 'vps-init secrets --raw' vps-init
+grep -q '【一、3x-ui 面板】' vps-init
+if grep -q 'XUI_PASSWORD=' config.env.example; then
+  echo 'FAIL: panel passwords must not be stored in normal config.env' >&2; exit 1
+fi
+python3 - <<'PY_REALITY_SAFE'
+from pathlib import Path
+s=Path("lib/common.sh").read_text()
+assert "www.cloudflare.com" not in s.split('REALITY_CANDIDATES="',1)[1].split('"',1)[0]
+x=Path("modules/3x-ui/xui_api.py").read_text()
+assert "cloudflare.com" in x and "limitFallbackUpload" in x
+PY_REALITY_SAFE
+
 python3 - <<'PY_CFWS_ORDER'
 from pathlib import Path
 s=Path("vps-init").read_text()
 assert s.index("module_nginx") < s.index("optional_cf_ws", s.index("if profile_has_xui"))
 PY_CFWS_ORDER
 
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.6" ]]
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.7" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
