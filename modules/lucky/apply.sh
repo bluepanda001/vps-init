@@ -89,6 +89,7 @@ UNIT
 
   secret_set LUCKY_USERNAME "$LUCKY_USERNAME"; secret_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
   secret_set LUCKY_LOCAL_URL "http://127.0.0.1:16601"
+  secret_set LUCKY_PANEL_SSH_TUNNEL "ssh -L 16601:127.0.0.1:16601 -p ${SSH_PORT} root@${SERVER_IP}"
 
   module_landing_service
   python3 "$ROOT_DIR/modules/lucky/lucky_api.py" --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" sync-cert --cert "$DOMAIN_CERT_FILE" --key "$DOMAIN_KEY_FILE" >/dev/null
