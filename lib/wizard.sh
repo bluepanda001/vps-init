@@ -48,6 +48,75 @@ wizard_prompt_default() {
   fi
 }
 
+
+wizard_prompt_secret() {
+  local prompt="$1" reply
+  read -r -s -p "$prompt: " reply
+  echo >&2
+  printf '%s\n' "$reply"
+}
+
+wizard_validate_admin_username() {
+  local v="$1"
+  [[ -z "$v" || ( "$v" != *[[:space:]]* && ${#v} -ge 3 && ${#v} -le 64 ) ]]
+}
+
+wizard_collect_admin_credentials() {
+  W_XUI_USERNAME_INPUT=""
+  W_XUI_PASSWORD_INPUT=""
+  W_LUCKY_USERNAME_INPUT=""
+  W_LUCKY_PASSWORD_INPUT=""
+  [[ "$W_PROFILE" != "base-only" ]] || return 0
+
+  echo
+  echo "面板管理账号（不会写入普通 config.env；只保存在 root-only state/secrets）："
+  local u p p2
+  while true; do
+    if [[ -n "${XUI_USERNAME:-}" ]]; then
+      read -r -p "3x-ui 用户名（留空=保持当前 ${XUI_USERNAME}）: " u
+    else
+      read -r -p "3x-ui 用户名（留空=自动随机生成）: " u
+    fi
+    wizard_validate_admin_username "$u" && break
+    echo "用户名需为 3-64 个非空白字符，请重新输入。"
+  done
+  while true; do
+    p="$(wizard_prompt_secret "3x-ui 密码（留空=保持当前/新部署自动随机生成）")"
+    [[ -z "$p" || ${#p} -ge 8 ]] || { echo "密码至少 8 个字符。"; continue; }
+    if [[ -n "$p" ]]; then
+      p2="$(wizard_prompt_secret "再次输入 3x-ui 密码")"
+      [[ "$p" == "$p2" ]] || { echo "两次密码不一致，请重新输入。"; continue; }
+    fi
+    break
+  done
+  W_XUI_USERNAME_INPUT="$u"
+  W_XUI_PASSWORD_INPUT="$p"
+
+  if [[ "$W_PROFILE" == "lucky-reality" ]]; then
+    echo
+    while true; do
+      if [[ -n "${LUCKY_USERNAME:-}" ]]; then
+        read -r -p "Lucky 用户名（留空=保持当前 ${LUCKY_USERNAME}）: " u
+      else
+        read -r -p "Lucky 用户名（留空=自动随机生成）: " u
+      fi
+      wizard_validate_admin_username "$u" && break
+      echo "用户名需为 3-64 个非空白字符，请重新输入。"
+    done
+    while true; do
+      p="$(wizard_prompt_secret "Lucky 密码（留空=保持当前/新部署自动随机生成）")"
+      [[ -z "$p" || ${#p} -ge 8 ]] || { echo "密码至少 8 个字符。"; continue; }
+      if [[ -n "$p" ]]; then
+        p2="$(wizard_prompt_secret "再次输入 Lucky 密码")"
+        [[ "$p" == "$p2" ]] || { echo "两次密码不一致，请重新输入。"; continue; }
+      fi
+      break
+    done
+    W_LUCKY_USERNAME_INPUT="$u"
+    W_LUCKY_PASSWORD_INPUT="$p"
+  fi
+}
+
 wizard_detect_ssh_port() {
   local p=""
   if [[ -n "${SSH_CONNECTION:-}" ]]; then
@@ -214,7 +283,7 @@ PANEL_DOMAIN_OVERRIDE=""
 NODE_DOMAIN_OVERRIDE=""
 REALITY_TARGET_MODE=$(wizard_shell_quote_value "$W_REALITY_TARGET_MODE")
 REALITY_TARGET=$(wizard_shell_quote_value "$W_REALITY_TARGET")
-REALITY_CANDIDATES="dl.google.com,www.apple.com,www.microsoft.com,github.io"
+REALITY_CANDIDATES="dl.google.com,www.apple.com,www.google.com,github.io"
 ENABLE_SUBSCRIPTION="auto"
 SUBSCRIPTION_EXPOSE_MODE="auto"
 SUBSCRIPTION_PORT=$(wizard_shell_quote_value "$W_SUBSCRIPTION_PORT")
@@ -362,6 +431,7 @@ wizard_collect() {
   fi
   [[ "$W_SSH_PORT" =~ ^[0-9]+$ ]] && ((W_SSH_PORT>=1 && W_SSH_PORT<=65535)) || die "SSH 端口无效。"
   wizard_collect_ssh_key
+  wizard_collect_admin_credentials
 
   W_ROOT_DOMAIN=""; W_LE_EMAIL=""
   if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
@@ -420,6 +490,18 @@ wizard_collect() {
     echo "Subscription Port : $W_SUBSCRIPTION_PORT"
     echo "Reality Target    : ${W_REALITY_TARGET_MODE}${W_REALITY_TARGET:+ ($W_REALITY_TARGET)}"
     echo "Clash/Mihomo      : ON / Routing ON / Auto Detect ON / (?i)(clash|mihomo)"
+    if [[ -n "${W_XUI_USERNAME_INPUT:-}${W_XUI_PASSWORD_INPUT:-}" ]]; then
+      echo "3x-ui Credentials : 用户自定义"
+    else
+      echo "3x-ui Credentials : 保持现有 / 新部署自动生成"
+    fi
+    if [[ "$W_PROFILE" == "lucky-reality" ]]; then
+      if [[ -n "${W_LUCKY_USERNAME_INPUT:-}${W_LUCKY_PASSWORD_INPUT:-}" ]]; then
+        echo "Lucky Credentials : 用户自定义"
+      else
+        echo "Lucky Credentials : 保持现有 / 新部署自动生成"
+      fi
+    fi
   fi
   echo "Docker            : $W_ENABLE_DOCKER"
   if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
@@ -449,7 +531,12 @@ wizard_run() {
   wizard_write_config "$pending"
   log_ok "候选配置已生成；验收通过后才会提交到：$cfg"
 
-  VPSINIT_ALLOW_PROFILE_SWITCH="${W_ALLOW_PROFILE_SWITCH:-0}" "$ROOT_DIR/vps-init" apply "$pending" || rc=$?
+  VPSINIT_ALLOW_PROFILE_SWITCH="${W_ALLOW_PROFILE_SWITCH:-0}" \
+  VPSINIT_XUI_USERNAME_INPUT="${W_XUI_USERNAME_INPUT:-}" \
+  VPSINIT_XUI_PASSWORD_INPUT="${W_XUI_PASSWORD_INPUT:-}" \
+  VPSINIT_LUCKY_USERNAME_INPUT="${W_LUCKY_USERNAME_INPUT:-}" \
+  VPSINIT_LUCKY_PASSWORD_INPUT="${W_LUCKY_PASSWORD_INPUT:-}" \
+    "$ROOT_DIR/vps-init" apply "$pending" || rc=$?
   if (( rc == 0 )); then
     install -m 600 "$pending" "$cfg"
     log_ok "部署与验收通过，配置已提交：$cfg"
