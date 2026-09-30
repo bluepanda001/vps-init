@@ -1,5 +1,15 @@
 # Release Notes
 
+## v1.3.0
+
+- 明确 Web Gateway 分工：不引入 Nginx Proxy Manager，也不新增 vps-init 自己的反向代理中心；系统 Nginx 仅负责公网 443 / SNI Stream 基础入口，应用反向代理默认交给 Lucky 图形界面维护。
+- 安装向导将 `Lucky + Reality` 标记为推荐的域名方案，并说明其用途是“图形化 Web Gateway + Reality，共用公网 443”；`Nginx + Reality` 保留为轻量/高级、配置文件管理方案。
+- 新增 `vps-init gateway` 和主菜单 “Web Gateway / Lucky”，可快速查看当前 Gateway、服务状态、Lucky 本地管理地址以及推荐的访问方式。
+- Lucky 管理后台继续只监听 `127.0.0.1:16601`，不直接暴露公网；部署时生成可复制的 SSH 隧道命令并写入 root-only secrets。
+- `vps-init secrets` 的 Lucky 分组新增 SSH 隧道命令；连接隧道后在本机打开 `http://127.0.0.1:16601` 即可管理反向代理。
+- 修正 `lucky-reality` 的部署信息/日志展示：明确系统 Nginx Stream 仍是外层 443 入口，Reality 走 `127.0.0.1:1443`，普通 HTTPS 走 Lucky `127.0.0.1:8443`。
+- v1.3.0 不包含应用安装模板。Docker/Compose/应用由用户自行安装和自定义，之后直接在 Lucky Web 服务中配置反向代理。
+
 ## v1.2.8
 
 - 新增 `vps-init passwd` 凭据管理入口，可交互修改 / 重置 3x-ui 与 Lucky 的管理用户名和密码。
