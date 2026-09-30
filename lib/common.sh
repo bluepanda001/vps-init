@@ -249,7 +249,15 @@ set_config_defaults() {
   NODE_DOMAIN_OVERRIDE=""
   REALITY_TARGET_MODE="auto"
   REALITY_TARGET=""
-  REALITY_CANDIDATES="dl.google.com,www.apple.com,www.microsoft.com,github.io"
+  # Avoid Cloudflare targets by default: failed REALITY authentication is
+  # forwarded to target and shared-CDN targets are easier to abuse as relays.
+  REALITY_CANDIDATES="dl.google.com,www.apple.com,www.google.com,github.io"
+  # Fallback-only throttling; valid REALITY clients are not rate-limited.
+  REALITY_FALLBACK_AFTER_BYTES="1048576"
+  REALITY_FALLBACK_UPLOAD_BPS="65536"
+  REALITY_FALLBACK_UPLOAD_BURST_BPS="131072"
+  REALITY_FALLBACK_DOWNLOAD_BPS="131072"
+  REALITY_FALLBACK_DOWNLOAD_BURST_BPS="262144"
   ENABLE_SUBSCRIPTION="auto"
   SUBSCRIPTION_EXPOSE_MODE="auto"
   SUBSCRIPTION_PORT="2096"
