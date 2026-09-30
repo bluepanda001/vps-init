@@ -28,10 +28,10 @@ def zone_id(name):
     if len(rows)!=1: raise RuntimeError(f'active zone not uniquely found for {name}')
     return rows[0]['id']
 
-def upsert(zone,name,ip,typ='A'):
+def upsert(zone,name,ip,typ='A',proxied=False):
     q=urllib.parse.urlencode({'type':typ,'name':name,'per_page':100})
     rows=(call('GET',f'/zones/{zone}/dns_records?{q}').get('result') or [])
-    payload={'type':typ,'name':name,'content':ip,'ttl':1,'proxied':False}
+    payload={'type':typ,'name':name,'content':ip,'ttl':1,'proxied':bool(proxied)}
     if rows:
       rid=rows[0]['id']; call('PUT',f'/zones/{zone}/dns_records/{rid}',payload)
       for extra in rows[1:]: call('DELETE',f"/zones/{zone}/dns_records/{extra['id']}")
@@ -40,14 +40,14 @@ def upsert(zone,name,ip,typ='A'):
 def main():
     ap=argparse.ArgumentParser(); sp=ap.add_subparsers(dest='cmd',required=True)
     p=sp.add_parser('verify'); p.add_argument('--zone',required=True)
-    p=sp.add_parser('upsert'); p.add_argument('--zone',required=True); p.add_argument('--name',required=True); p.add_argument('--ip',required=True); p.add_argument('--type',default='A')
+    p=sp.add_parser('upsert'); p.add_argument('--zone',required=True); p.add_argument('--name',required=True); p.add_argument('--ip',required=True); p.add_argument('--type',default='A'); p.add_argument('--proxied',action='store_true')
     args=ap.parse_args()
     try:
       if args.cmd=='verify':
         zid=zone_id(args.zone)
         print(json.dumps({'ok':True,'zone':args.zone,'zone_id':zid}))
       else:
-        zid=zone_id(args.zone); upsert(zid,args.name,args.ip,args.type); print(json.dumps({'ok':True,'zone_id':zid,'name':args.name,'type':args.type}))
+        zid=zone_id(args.zone); upsert(zid,args.name,args.ip,args.type,args.proxied); print(json.dumps({'ok':True,'zone_id':zid,'name':args.name,'type':args.type,'proxied':bool(args.proxied)}))
       return 0
     except Exception as e: print(f'cloudflare error: {e}',file=sys.stderr); return 2
 if __name__=='__main__': raise SystemExit(main())
