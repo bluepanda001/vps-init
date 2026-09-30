@@ -55,13 +55,13 @@ UNIT
   systemctl daemon-reload
   systemctl enable lucky
 
+  local requested_lucky_username="${VPSINIT_LUCKY_USERNAME_INPUT:-}"
+  local requested_lucky_password="${VPSINIT_LUCKY_PASSWORD_INPUT:-}"
   state_load
-  if [[ -z "${LUCKY_USERNAME:-}" || -z "${LUCKY_PASSWORD:-}" ]]; then
-    LUCKY_USERNAME="lucky_$(random_hex 3)"
-    LUCKY_PASSWORD="$(random_b64url 36 28)"
-    state_set LUCKY_USERNAME "$LUCKY_USERNAME"
-    state_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
-  fi
+  LUCKY_USERNAME="${requested_lucky_username:-${LUCKY_USERNAME:-lucky_$(random_hex 3)}}"
+  LUCKY_PASSWORD="${requested_lucky_password:-${LUCKY_PASSWORD:-$(random_b64url 36 28)}}"
+  state_set LUCKY_USERNAME "$LUCKY_USERNAME"
+  state_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
 
   # Lucky 2.27.2 stores its active configuration as encrypted/modular *.lkcf
   # files. Its documented runtime control command resets credentials to
