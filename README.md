@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.2.6 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
+V1.2.7 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
 
 ## 一键安装
 
@@ -58,7 +58,7 @@ vps-init
   4. Lucky + Reality
 ```
 
-快速安装只询问真正必要的信息；自定义安装才展开 URI Path、订阅端口、Reality Target、Docker 等参数。对 `nginx-reality` / `lucky-reality`，快速安装默认同时创建 Cloudflare CDN WS 备用节点；自定义安装可关闭。
+快速安装只询问真正必要的信息；自定义安装才展开 URI Path、订阅端口、Reality Target、Docker 等参数。所有带 3x-ui 的 Profile 都会在部署阶段允许输入 3x-ui 管理用户名/密码；Lucky Profile 还会允许输入 Lucky 用户名/密码。密码输入不回显，留空则保持现有凭据，新部署时自动随机生成，而且这些密码不会写进普通 `config.env`。对 `nginx-reality` / `lucky-reality`，快速安装默认同时创建 Cloudflare CDN WS 备用节点；自定义安装可关闭。
 
 ## Profile
 
@@ -90,9 +90,11 @@ User-Agent Regex            (?i)(clash|mihomo)
 JSON Subscription           OFF
 ```
 
-标准订阅 URL 遇到 Clash/Mihomo User-Agent 会自动返回 YAML。3x-ui 的独立 Clash endpoint 保持 `/clash/`，避免与标准订阅路由发生冲突。
+标准订阅 URL 遇到 Clash/Mihomo User-Agent 会自动返回 YAML；另外也会明确生成独立的 Clash/Mihomo 地址 `https://<host>/clash/<SubID>`，并保留 `/mihomo/<SubID>` 明确端点。`vps-init secrets` 会把标准订阅和这两条专用订阅分开显示。
 
 Reality UUID / SubID / Short ID / X25519 密钥都是**第一次随机生成**；重跑时读取现有状态并继续使用，不会每次变更。
+
+REALITY 的 `target` 需要额外注意：鉴权失败的连接会被 Xray 转发到 `target`。因此 V1.2.7 起自动候选不再使用 Cloudflare 共享 CDN 域名，并拒绝手动把 `cloudflare.com`、`cloudflare.net`、`workers.dev`、`pages.dev` 作为 target；旧部署若仍使用这类 target，重跑时会自动迁移到扫描出的安全候选。同时默认启用 Xray 原生 fallback 限速：首 1 MiB 后，上传 64 KiB/s、下载 128 KiB/s，并允许有限 burst。该限速只针对鉴权失败后的 fallback，不限制合法 REALITY 客户端。
 
 ## Reality Only
 
@@ -240,9 +242,13 @@ vps-init wizard
 vps-init apply
 vps-init verify
 vps-init status
+vps-init secrets
+vps-init secrets --raw
 vps-init logs
 vps-init update
 ```
+
+其中 `vps-init secrets` 默认按中文标题分组展示当前 Profile 相关的 3x-ui / Lucky、订阅、Reality、CDN WS 和 API 信息；长链接独立换行。需要兼容脚本处理时使用 `vps-init secrets --raw` 查看原始 `KEY=VALUE`。
 
 ## 重要文件
 
