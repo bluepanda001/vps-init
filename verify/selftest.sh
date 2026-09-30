@@ -36,6 +36,7 @@ W_SUBSCRIPTION_PORT=2096
 W_PANEL_PATH=/zhg/
 W_SUB_PATH="/zhg/"
 W_ENABLE_DOCKER=false
+W_ENABLE_CF_WS=false
 cfg=$(mktemp)
 wizard_write_config "$cfg"
 load_config "$cfg"
@@ -172,7 +173,23 @@ if grep -q 'load_local_admin\|ensure-admin' modules/lucky/lucky_api.py modules/l
 fi
 
 grep -q '拒绝回退' install.sh
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.5" ]]
+# V1.2.6: Cloudflare CDN WS must be a real loopback Xray inbound behind
+# Cloudflare-proxied DNS and an Nginx TLS/SNI frontend, with real proxy verification.
+grep -q 'create-ws' modules/3x-ui/xui_api.py
+grep -q -- '--proxied' modules/cloudflare/cloudflare.py
+grep -q 'VPSINIT-CDN-WS' optional/cf-ws/apply.sh
+grep -q '127.0.0.1:8444' optional/cf-ws/apply.sh
+grep -q 'vps-init-extra-sni.map' modules/nginx/apply.sh
+grep -q 'Cloudflare CDN WS end-to-end proxy' verify/verify.sh
+grep -q 'Mihomo subscription advertises CDN WS endpoint' verify/verify.sh
+grep -q 'W_ENABLE_CF_WS' lib/wizard.sh
+python3 - <<'PY_CFWS_ORDER'
+from pathlib import Path
+s=Path("vps-init").read_text()
+assert s.index("module_nginx") < s.index("optional_cf_ws", s.index("if profile_has_xui"))
+PY_CFWS_ORDER
+
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.6" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
