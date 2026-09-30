@@ -9,7 +9,7 @@ qinglong_compose_file() {
 }
 
 qinglong_installed() {
-  app_state_exists "$QINGLONG_ID" && docker inspect "$QINGLONG_CONTAINER" >/dev/null 2>&1
+  command_exists docker && app_state_exists "$QINGLONG_ID" && docker inspect "$QINGLONG_CONTAINER" >/dev/null 2>&1
 }
 
 qinglong_write_compose() {
