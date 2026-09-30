@@ -26,6 +26,32 @@ verify_mihomo_domain() {
   grep -E '^(proxies|proxy-groups|rules):' <<<"$body" >/dev/null
 }
 
+
+verify_explicit_clash_direct() {
+  curl -fsS --max-time 12     --connect-to "${SERVER_IP}:${SUBSCRIPTION_PORT}:127.0.0.1:${SUBSCRIPTION_PORT}"     "https://${SERVER_IP}:${SUBSCRIPTION_PORT}/clash/${SUB_ID}" |
+    grep -E '^(proxies|proxy-groups|rules):' >/dev/null
+}
+
+verify_explicit_clash_domain() {
+  curl -fsS --max-time 12     --resolve "${NODE_DOMAIN}:443:127.0.0.1"     "https://${NODE_DOMAIN}/clash/${SUB_ID}" |
+    grep -E '^(proxies|proxy-groups|rules):' >/dev/null
+}
+
+verify_reality_abuse_protection() {
+  local api rows
+  api="$(xui_base_url)"
+  rows="$(python3 "$ROOT_DIR/modules/3x-ui/xui_api.py" --base "$api" --token "$XUI_API_TOKEN" list-inbounds)" || return 1
+  jq -e     --argjson after "$REALITY_FALLBACK_AFTER_BYTES"     --argjson up "$REALITY_FALLBACK_UPLOAD_BPS"     --argjson down "$REALITY_FALLBACK_DOWNLOAD_BPS"     '
+      [.[] | select(.remark=="VPSINIT-Reality")][0] as $i
+      | ($i != null)
+      and (($i.streamSettings.realitySettings.target // $i.streamSettings.realitySettings.dest // "") | ascii_downcase | test("(^|\\.)cloudflare\\.(com|net)(:|$)|(^|\\.)(workers|pages)\\.dev(:|$)") | not)
+      and (($i.streamSettings.realitySettings.limitFallbackUpload.afterBytes // -1) == $after)
+      and (($i.streamSettings.realitySettings.limitFallbackUpload.bytesPerSec // -1) == $up)
+      and (($i.streamSettings.realitySettings.limitFallbackDownload.afterBytes // -1) == $after)
+      and (($i.streamSettings.realitySettings.limitFallbackDownload.bytesPerSec // -1) == $down)
+    ' <<<"$rows" >/dev/null
+}
+
 verify_mihomo_public_endpoint() {
   local body expected_server
   if [[ "$SUBSCRIPTION_EXPOSE_MODE_RESOLVED" == direct-ip-https ]]; then
@@ -202,12 +228,14 @@ verify_all() {
         check "443 owned by Xray" bash -c "ss -H -ltnp 'sport = :443' | grep -i xray >/dev/null"
       fi
       check "Reality end-to-end handshake" verify_reality_handshake
+      check "Reality target / fallback abuse protection" verify_reality_abuse_protection
       if is_true "$ENABLE_SUBSCRIPTION_RESOLVED"; then
         if [[ "$SUBSCRIPTION_EXPOSE_MODE_RESOLVED" == direct-ip-https ]]; then
           check "IP certificate valid >24h" openssl x509 -checkend 86400 -noout -in "$IP_CERT_FILE"
           if [[ -n "${SUB_ID:-}" ]]; then
             check "public IP HTTPS subscription" curl -fsS --max-time 10 --connect-to "${SERVER_IP}:${SUBSCRIPTION_PORT}:127.0.0.1:${SUBSCRIPTION_PORT}" -o /dev/null "https://${SERVER_IP}:${SUBSCRIPTION_PORT}${SUBSCRIPTION_PATH}${SUB_ID}"
             check "Mihomo UA receives Clash YAML" verify_mihomo_direct
+            check "explicit Clash/Mihomo subscription" verify_explicit_clash_direct
             check "Mihomo subscription advertises public Reality endpoint" verify_mihomo_public_endpoint
           fi
           echo "Subscription: https://${SERVER_IP}:${SUBSCRIPTION_PORT}${SUBSCRIPTION_PATH}<client-sub-id>"
@@ -216,6 +244,7 @@ verify_all() {
           check "subscription backend loopback HTTP" curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:${SUBSCRIPTION_PORT}${SUBSCRIPTION_PATH}${SUB_ID}"
           check "public HTTPS subscription through 443" curl -fsS --max-time 10 --resolve "${NODE_DOMAIN}:443:127.0.0.1" -o /dev/null "https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}${SUB_ID}"
           check "Mihomo UA receives Clash YAML" verify_mihomo_domain
+          check "explicit Clash/Mihomo subscription" verify_explicit_clash_domain
           check "Mihomo subscription advertises public Reality endpoint" verify_mihomo_public_endpoint
           echo "Subscription: https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}<client-sub-id>"
         fi
