@@ -9,6 +9,7 @@ source "$ROOT_DIR/lib/backup.sh"
 source "$ROOT_DIR/lib/validate.sh"
 source "$ROOT_DIR/lib/service.sh"
 source "$ROOT_DIR/lib/wizard.sh"
+source "$ROOT_DIR/lib/credentials.sh"
 source "$ROOT_DIR/core/preflight.sh"
 source "$ROOT_DIR/core/system.sh"
 source "$ROOT_DIR/core/swap.sh"
@@ -48,6 +49,8 @@ VPS Init ${VERSION}
   vps-init info [config.env]
   vps-init secrets             # 中文分组显示
   vps-init secrets --raw       # 原始 KEY=VALUE
+  vps-init passwd               # 修改/重置并同步面板账号密码
+  vps-init passwd xui|lucky
   vps-init update
   vps-init logs
 TXT
@@ -331,14 +334,15 @@ menu() {
   3. 查看部署信息
   4. 查看当前状态
   5. 查看敏感凭据
-  6. 编辑配置
-  7. 更新 VPS Init
-  8. 查看服务日志
-  9. 重新运行安装向导
+  6. 修改管理账号 / 密码
+  7. 编辑配置
+  8. 更新 VPS Init
+  9. 查看服务日志
+ 10. 重新运行安装向导
   0. 退出
 TXT
     local n
-    read -r -p "请选择 [0-9]: " n
+    read -r -p "请选择 [0-10]: " n
     case "$n" in
       1)
         if [[ -f "$DEFAULT_CFG" ]]; then
@@ -358,13 +362,14 @@ TXT
           if wizard_yesno "确认显示？" n; then show_secrets_pretty; fi
         else echo "尚未生成凭据文件。"; fi
         ;;
-      6)
+      6) credential_menu || true ;;
+      7)
         [[ -f "$DEFAULT_CFG" ]] || { echo "尚无配置，先运行安装向导。"; "$ROOT_DIR/vps-init" wizard; continue; }
         "${EDITOR:-vi}" "$DEFAULT_CFG"
         ;;
-      7) update_self || true ;;
-      8) show_logs || true ;;
-      9)
+      8) update_self || true ;;
+      9) show_logs || true ;;
+      10)
         local wizard_rc=0
         "$ROOT_DIR/vps-init" wizard || wizard_rc=$?
         (( wizard_rc == 42 )) && exit 0
@@ -392,6 +397,7 @@ case "$cmd" in
     esac
     exit 0
     ;;
+  passwd) require_root; credential_command "${2:-}"; exit 0 ;;
   logs) require_root; show_logs; exit 0 ;;
   update) require_root; update_self; exit 0 ;;
   status) require_root; show_status_summary "$cfg"; exit 0 ;;
