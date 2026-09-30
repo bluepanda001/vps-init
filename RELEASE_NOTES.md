@@ -1,5 +1,15 @@
 # Release Notes
 
+## v1.3.0
+
+- 新增“应用中心”框架，将核心 Profile 与附加应用生命周期分离；应用状态保存在 `/var/lib/vps-init/apps/<app>.env`，应用数据统一放在 `/opt/vps-apps/<app>/`。
+- Docker Engine 抽成可复用运行环境：核心部署仍可按原开关安装，应用中心也能在需要 Docker 应用时自动安装并复用同一套官方 Docker Engine/Compose。
+- 第一款应用加入青龙面板：使用官方推荐的 `whyour/qinglong:latest` Docker 镜像，数据持久化到 `/opt/vps-apps/qinglong/data`，容器端口只绑定 `127.0.0.1:<host>:5700`，不直接暴露公网。
+- 新增 Nginx Web Gateway Provider：在 `nginx-reality` Profile 下可自动创建 `ql.<ROOT_DOMAIN>` Cloudflare 橙云记录、复用 wildcard 证书，并通过现有公网 443 / Nginx Stream / loopback 8443 反代到应用本地端口。
+- 青龙支持 install / status / verify / update / remove；卸载默认保留数据目录，反向代理配置会同步移除。
+- 主菜单新增“应用中心”，CLI 新增 `vps-init apps` 以及 `vps-init app qinglong [install|status|verify|update|remove]`。
+- v1.3.0 MVP 先完整支持 `nginx-reality + Nginx Gateway + 青龙 Docker`；Lucky Gateway Provider 和更多应用会沿同一接口继续扩展。
+
 ## v1.2.8
 
 - 新增 `vps-init passwd` 凭据管理入口，可交互修改 / 重置 3x-ui 与 Lucky 的管理用户名和密码。
