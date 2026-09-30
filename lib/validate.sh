@@ -12,10 +12,21 @@ validate_config() {
   case "$REALITY_TARGET_MODE" in auto|manual) ;; *) die "REALITY_TARGET_MODE 只能是 auto/manual。" ;; esac
   if profile_has_xui; then
     [[ "$REALITY_TARGET_MODE" != manual || -n "$REALITY_TARGET" ]] || die "manual 模式必须设置 REALITY_TARGET。"
+    if [[ "$REALITY_TARGET_MODE" == manual ]]; then
+      local reality_target_lc="${REALITY_TARGET,,}"
+      if [[ "$reality_target_lc" =~ (^|\.)(cloudflare\.com|cloudflare\.net|workers\.dev|pages\.dev)(:[0-9]+)?$ ]]; then
+        die "拒绝把 Cloudflare 共享 CDN 域名作为 Reality Target：鉴权失败流量会被转发到 target，存在被扫描后偷跑流量风险。"
+      fi
+    fi
     [[ "$REALITY_CANDIDATES" != */* ]] || die "REALITY_CANDIDATES 不接受 CIDR/网段；V1 只做小规模域名候选检测。"
     local candidate_count
     candidate_count="$(awk -F, '{print NF}' <<<"$REALITY_CANDIDATES")"
     (( candidate_count <= 10 )) || die "REALITY_CANDIDATES 最多 10 个候选，避免大范围扫描。"
+    local fallback_key fallback_val
+    for fallback_key in REALITY_FALLBACK_AFTER_BYTES REALITY_FALLBACK_UPLOAD_BPS REALITY_FALLBACK_UPLOAD_BURST_BPS REALITY_FALLBACK_DOWNLOAD_BPS REALITY_FALLBACK_DOWNLOAD_BURST_BPS; do
+      fallback_val="${!fallback_key}"
+      [[ "$fallback_val" =~ ^[0-9]+$ ]] || die "${fallback_key} 必须是非负整数。"
+    done
   fi
 
   [[ "$SUBSCRIPTION_PORT" =~ ^[0-9]+$ ]] && ((SUBSCRIPTION_PORT>=1 && SUBSCRIPTION_PORT<=65535)) || die "SUBSCRIPTION_PORT 无效。"
