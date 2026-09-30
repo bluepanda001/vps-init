@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.2.7 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
+V1.2.8 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
 
 ## 一键安装
 
@@ -244,11 +244,16 @@ vps-init verify
 vps-init status
 vps-init secrets
 vps-init secrets --raw
+vps-init passwd
+vps-init passwd xui
+vps-init passwd lucky
 vps-init logs
 vps-init update
 ```
 
 其中 `vps-init secrets` 默认按中文标题分组展示当前 Profile 相关的 3x-ui / Lucky、订阅、Reality、CDN WS 和 API 信息；长链接独立换行。需要兼容脚本处理时使用 `vps-init secrets --raw` 查看原始 `KEY=VALUE`。
+
+如果之后需要修改管理账号/密码，推荐不要直接在网页里改，而是运行 `vps-init passwd`。3x-ui / Lucky 修改成功后会同时更新实际服务、`state.env` 和 `vps-init-secrets.txt`，因此随后再次执行 `vps-init secrets` 会显示新的同步值。即使 Lucky 网页密码已被手工改过而与保存状态不一致，`vps-init passwd lucky` 也可以通过官方本机恢复流程重新对齐。
 
 ## 重要文件
 
