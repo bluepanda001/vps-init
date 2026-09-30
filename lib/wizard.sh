@@ -449,7 +449,7 @@ wizard_collect() {
     target_choice="$(wizard_select "Reality Target：" "自动检测并推荐（推荐）" "手动填写")"
     if [[ "$target_choice" == 2 ]]; then
       W_REALITY_TARGET_MODE="manual"
-      while [[ -z "$W_REALITY_TARGET" ]]; do W_REALITY_TARGET="$(wizard_prompt_default "Reality Target，例如 www.microsoft.com:443" "")"; done
+      while [[ -z "$W_REALITY_TARGET" ]]; do W_REALITY_TARGET="$(wizard_prompt_default "Reality Target，例如 dl.google.com:443" "")"; done
     fi
   fi
 
