@@ -202,10 +202,22 @@ if grep -q 'XUI_PASSWORD=' config.env.example; then
 fi
 python3 - <<'PY_REALITY_SAFE'
 from pathlib import Path
+import importlib.util
 s=Path("lib/common.sh").read_text()
 assert "www.cloudflare.com" not in s.split('REALITY_CANDIDATES="',1)[1].split('"',1)[0]
-x=Path("modules/3x-ui/xui_api.py").read_text()
-assert "cloudflare.com" in x and "limitFallbackUpload" in x
+spec=importlib.util.spec_from_file_location("xui_api","modules/3x-ui/xui_api.py")
+m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+assert m.target_is_high_risk("www.cloudflare.com:443")
+assert m.target_is_high_risk("foo.pages.dev:443")
+assert not m.target_is_high_risk("dl.google.com:443")
+try:
+    m.select_target("", "", "manual", "www.cloudflare.com:443", "")
+except RuntimeError as e:
+    assert "high-risk" in str(e)
+else:
+    raise AssertionError("Cloudflare target was not rejected")
+lim=m.fallback_limit(1024,2048,4096)
+assert lim == {"afterBytes":1024,"bytesPerSec":2048,"burstBytesPerSec":4096}
 PY_REALITY_SAFE
 
 python3 - <<'PY_CFWS_ORDER'
