@@ -102,6 +102,8 @@ module_xui() {
   have_ver="$(/usr/local/x-ui/x-ui -v 2>/dev/null | tr -d '[:space:]' || true)"
   [[ "$have_ver" == "$want_ver" ]] || die "3x-ui 版本校验失败：当前 ${have_ver:-unknown}，需要 ${want_ver}。"
 
+  local requested_xui_username="${VPSINIT_XUI_USERNAME_INPUT:-}"
+  local requested_xui_password="${VPSINIT_XUI_PASSWORD_INPUT:-}"
   state_load
   XUI_PANEL_PORT="${XUI_PANEL_PORT:-$(random_port)}"
   # Backward compatible: an existing state value always wins. On a fresh VPS,
@@ -110,8 +112,8 @@ module_xui() {
     XUI_WEB_BASE_PATH="${XUI_PANEL_URI_PATH:-/zhg/}"
   fi
   XUI_WEB_BASE_PATH="$(normalize_path "$XUI_WEB_BASE_PATH")"
-  XUI_USERNAME="${XUI_USERNAME:-vpsadmin_$(random_hex 3)}"
-  XUI_PASSWORD="${XUI_PASSWORD:-$(random_b64url 36 28)}"
+  XUI_USERNAME="${requested_xui_username:-${XUI_USERNAME:-vpsadmin_$(random_hex 3)}}"
+  XUI_PASSWORD="${requested_xui_password:-${XUI_PASSWORD:-$(random_b64url 36 28)}}"
 
   /usr/local/x-ui/x-ui setting     -port "$XUI_PANEL_PORT"     -username "$XUI_USERNAME"     -password "$XUI_PASSWORD"     -webBasePath "$XUI_WEB_BASE_PATH"     -listenIP 127.0.0.1 >/dev/null
 
