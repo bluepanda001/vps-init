@@ -217,7 +217,7 @@ secret_line() {
   local label="$1" key="$2" value
   value="$(secret_value "$key")"
   [[ -n "$value" ]] || return 0
-  printf '  %-18s : %s\n' "$label" "$value"
+  printf '  %s： %s\n' "$label" "$value"
 }
 
 secret_block() {
