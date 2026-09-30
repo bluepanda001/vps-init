@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.3.0 的目标是把核心部署与附加应用管理统一到同一个 VPS 管理入口：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
+V1.2.8 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
 
 ## 一键安装
 
@@ -172,65 +172,6 @@ edge.<domain>:443 -> VLESS/WS/TLS via Cloudflare（橙云）
 验收会启动临时 Xray 客户端，通过 `edge.<domain>:443 -> Cloudflare -> Nginx -> VLESS/WS` 建立真实代理，并经本地 SOCKS 请求外网；不是只检查 DNS、端口或 HTTP 状态。
 
 
-## 应用中心
-
-V1.3.0 起，核心 Profile 与附加应用分开管理。核心 Profile 负责 SSH、防火墙、Reality、Nginx/Lucky、证书和 Cloudflare 基础设施；应用中心负责 Docker 应用及其反向代理。
-
-首批 MVP 支持：
-
-- Docker Engine：作为可复用运行环境；
-- 青龙面板：Docker 安装、状态、验收、更新、卸载；
-- Nginx Web Gateway：在 `nginx-reality` Profile 下自动把应用接入现有 443。
-
-青龙默认使用：
-
-```text
-whyour/qinglong:latest
-容器端口：5700
-宿主机绑定：127.0.0.1:<host-port>
-数据目录：/opt/vps-apps/qinglong/data
-默认域名：ql.<ROOT_DOMAIN>
-```
-
-公网访问链路：
-
-```text
-https://ql.<domain>
-      ↓ Cloudflare orange-cloud
-VPS public :443
-      ↓ Nginx Stream default HTTPS route
-127.0.0.1:8443
-      ↓ Nginx app gateway
-127.0.0.1:<host-port>
-      ↓
-QingLong :5700
-```
-
-应用端口不会直接绑定 `0.0.0.0`，因此 UFW 不需要为青龙额外开放 5700。应用状态保存在：
-
-```text
-/var/lib/vps-init/apps/qinglong.env
-```
-
-应用数据保存在：
-
-```text
-/opt/vps-apps/qinglong/
-```
-
-常用命令：
-
-```bash
-vps-init apps
-vps-init app qinglong install
-vps-init app qinglong status
-vps-init app qinglong verify
-vps-init app qinglong update
-vps-init app qinglong remove
-```
-
-当前 MVP 的自动 HTTPS Gateway 先支持 `nginx-reality`。其他 Profile 可以先仅本机安装应用；Lucky Gateway Provider 会在后续版本按同一个接口补齐。
-
 ## Cloudflare Token
 
 Token 不写进 `config.env`。域名 Profile 第一次部署时隐藏输入，保存到：
@@ -283,17 +224,14 @@ vps-init
 ```
 
 ```text
-1. 核心部署 / 继续部署
-2. 应用中心
-3. 运行核心验收
-4. 查看部署信息
-5. 查看当前状态
-6. 查看敏感凭据
-7. 修改管理账号 / 密码
-8. 编辑配置
-9. 更新 VPS Init
-10. 查看服务日志
-11. 重新运行核心安装向导
+1. 一键部署 / 继续部署
+2. 运行验收
+3. 查看当前状态
+4. 查看敏感凭据
+5. 编辑配置
+6. 更新 VPS Init
+7. 查看服务日志
+8. 重新运行安装向导
 0. 退出
 ```
 
@@ -309,8 +247,6 @@ vps-init secrets --raw
 vps-init passwd
 vps-init passwd xui
 vps-init passwd lucky
-vps-init apps
-vps-init app qinglong status
 vps-init logs
 vps-init update
 ```
@@ -378,5 +314,4 @@ SHA256SUMS
 - 推荐在全新 VPS 使用。
 - 同一 Profile 可以幂等重跑；不自动进行任意 Profile 之间的无损迁移。
 - `ENABLE_CF_WS` 已正式支持域名 Profile；`ENABLE_CF_PREFERRED`、`ENABLE_CLOUDFLARESUB` 仍为预留扩展并保持 fail-closed。
-- 应用中心 v1.3.0 MVP 先支持 `nginx-reality + Nginx Gateway + 青龙 Docker`；Lucky Gateway 和更多应用后续扩展。
 - 这是个人 VPS 实用安全基线，不是 CIS/企业合规基线。
