@@ -210,6 +210,23 @@ grep -q 'state_set LUCKY_PASSWORD' lib/credentials.sh
 grep -q 'secret_set LUCKY_PASSWORD' lib/credentials.sh
 grep -q '/opt/lucky/lucky -rResetUser' lib/credentials.sh
 grep -q 'Authorization: Bearer' lib/credentials.sh
+
+# V1.3.0: application center MVP.
+grep -q 'source "$ROOT_DIR/apps/manager.sh"' vps-init
+grep -q 'vps-init apps' vps-init
+grep -q 'vps-init app qinglong status' vps-init
+grep -q 'ensure_docker_runtime' optional/docker/apply.sh
+grep -q 'APP_STATE_DIR=' apps/common.sh
+grep -q '127.0.0.1:.*:5700' apps/qinglong/app.sh
+grep -q 'whyour/qinglong:latest' apps/qinglong/app.sh
+grep -q 'vps-init-app-' apps/gateway/nginx.sh
+grep -q -- '--proxied' apps/gateway/nginx.sh
+grep -q 'listen 127.0.0.1:8443 ssl' apps/gateway/nginx.sh
+grep -q 'gateway_nginx_verify' apps/qinglong/app.sh
+if grep -q '0.0.0.0:.*5700' apps/qinglong/app.sh; then
+  echo 'FAIL: QingLong must not bind its application port publicly' >&2; exit 1
+fi
+
 if grep -q 'XUI_PASSWORD=' config.env.example; then
   echo 'FAIL: panel passwords must not be stored in normal config.env' >&2; exit 1
 fi
@@ -239,7 +256,7 @@ s=Path("vps-init").read_text()
 assert s.index("module_nginx") < s.index("optional_cf_ws", s.index("if profile_has_xui"))
 PY_CFWS_ORDER
 
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.8" ]]
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.3.0" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
