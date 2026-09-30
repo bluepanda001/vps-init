@@ -5,6 +5,7 @@ module_nginx() {
   nginx -V 2>&1 | grep -q -- '--with-stream_ssl_preread_module' || \
     die "当前 Nginx 构建不支持 stream ssl_preread，拒绝继续域名 443 分流。"
   mkdir -p /etc/nginx/stream-conf.d /var/www/vps-init
+  touch /etc/nginx/stream-conf.d/vps-init-extra-sni.map
   install -m 644 "$ROOT_DIR/templates/index.html" /var/www/vps-init/index.html
   backup_file /etc/nginx/nginx.conf
   if ! grep -q 'vps-init stream include' /etc/nginx/nginx.conf; then
@@ -22,6 +23,7 @@ NGINX
 # REALITY uses its camouflage SNI; all other TLS goes to the HTTPS backend.
 map \$ssl_preread_server_name \$vpsinit_backend {
     "${REALITY_SERVER_NAME}" 127.0.0.1:1443;
+    include /etc/nginx/stream-conf.d/vps-init-extra-sni.map;
     default 127.0.0.1:8443;
 }
 server {
