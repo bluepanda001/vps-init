@@ -1,5 +1,14 @@
 # Release Notes
 
+## v1.2.6
+
+- 新增真正可用的 Cloudflare CDN 备用节点：3x-ui 自动创建独立的 `VLESS + WebSocket` loopback 入站，`edge.<domain>` 自动写入 Cloudflare 橙云 DNS，公网仍复用 443。
+- Nginx Stream 的 SNI 分流新增可扩展映射：Reality 继续走 `127.0.0.1:1443`，普通面板/订阅继续走 `8443`，CDN SNI 单独进入 `127.0.0.1:8444`，再按随机 WS Path 转发到 3x-ui 自带 Xray。
+- 3x-ui Host 自动为 CDN 入站登记 `TLS + SNI + Host Header + WS Path` 公网参数，并与 Reality 共用同一个 SubID；Clash/Mihomo 标准订阅会同时下发 Reality 和 CDN WS 两个节点。
+- CDN 验收不是只测 HTTP：会启动临时 Xray 客户端，经 `edge.<domain>:443 -> Cloudflare -> Nginx -> VLESS/WS` 建立真实代理，再通过 SOCKS 请求 Google 204；同时检查橙云 DNS、订阅参数、loopback listener 和 Nginx 8444。
+- 域名 Profile 的快速安装默认启用 CDN WS 备用节点；自定义安装可显式关闭。手工配置仍通过 `ENABLE_CF_WS=true/false` 控制。
+- 保留 `edge.<domain>/zhg/` 面板代理与 `/sub/` 订阅别名，避免新增 CDN 节点后破坏此前的 Cloudflare 安全访问入口。
+
 ## v1.2.5
 
 - 在真实 Ubuntu 24.04 RackNerd VPS 上完成四种 Profile 的完整回归：`base-only`、`reality-only`、`nginx-reality`、`lucky-reality` 均通过部署与验收，并覆盖幂等重跑；域名方案还完成了冷启动后的再次验收。
