@@ -1,5 +1,14 @@
 # Release Notes
 
+## v1.2.7
+
+- REALITY 安全加固：不再把 Cloudflare 共享 CDN 域名作为自动/手动 target；旧版本若已经使用此类高风险 target，重跑时会自动迁移到扫描出的安全候选。
+- 为 REALITY 鉴权失败后的 fallback 流量加入 Xray 原生限速：默认 1 MiB 后开始限速，上传 64 KiB/s、下载 128 KiB/s，并保留有限 burst；合法 REALITY 客户端不受影响。
+- 新增独立的 Clash/Mihomo 订阅地址并写入 root-only secrets，同时保留标准订阅 URL 和 /mihomo/ 明确端点；验收会真实请求独立 Clash 路径并确认返回 YAML。
+- 安装向导新增 3x-ui 管理用户名/密码输入；Lucky Profile 同时新增 Lucky 用户名/密码输入。密码输入不回显、不写入普通 config.env；留空时保持现有凭据，新部署则自动随机生成。
+- `vps-init secrets` 改为中文分组输出，按当前 Profile 展示 3x-ui、Lucky、订阅、Reality、CDN WS 和 API 信息；长链接单独换行。原始 KEY=VALUE 输出保留为 `vps-init secrets --raw`。
+- 默认 Reality 候选改为 `dl.google.com,www.apple.com,www.google.com,github.io`，并新增 fallback 安全参数校验和验收。
+
 ## v1.2.6
 
 - 新增真正可用的 Cloudflare CDN 备用节点：3x-ui 自动创建独立的 `VLESS + WebSocket` loopback 入站，`edge.<domain>` 自动写入 Cloudflare 橙云 DNS，公网仍复用 443。
