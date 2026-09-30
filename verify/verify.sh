@@ -143,7 +143,7 @@ verify_cf_ws_subscription() {
   grep -F "  server: ${CF_WS_DOMAIN}" <<<"$body" >/dev/null &&
     grep -F '  port: 443' <<<"$body" >/dev/null &&
     grep -F '  network: ws' <<<"$body" >/dev/null &&
-    grep -F "      path: ${CF_WS_PATH}" <<<"$body" >/dev/null
+    grep -F "    path: ${CF_WS_PATH}" <<<"$body" >/dev/null
 }
 
 verify_cf_ws_dns_is_proxied() {
@@ -230,7 +230,7 @@ verify_all() {
       check "CDN WS Nginx TLS frontend 8444" bash -c "ss -H -ltnp 'sport = :8444' | grep -i nginx >/dev/null"
       check "CDN WS SNI stream mapping" grep -F "${CF_WS_DOMAIN}" /etc/nginx/stream-conf.d/vps-init-extra-sni.map
       check "Cloudflare CDN DNS is proxied" verify_cf_ws_dns_is_proxied
-      check "public Cloudflare HTTPS frontend" curl -fsS --max-time 15 -o /dev/null "https://${CF_WS_DOMAIN}/"
+      check "public Cloudflare HTTPS frontend" curl -fsS --max-time 15 -o /dev/null "https://${CF_WS_DOMAIN}${XUI_WEB_BASE_PATH}"
       check "Mihomo subscription advertises CDN WS endpoint" verify_cf_ws_subscription
       check "Cloudflare CDN WS end-to-end proxy" verify_cf_ws_handshake
     fi
