@@ -239,7 +239,18 @@ s=Path("vps-init").read_text()
 assert s.index("module_nginx") < s.index("optional_cf_ws", s.index("if profile_has_xui"))
 PY_CFWS_ORDER
 
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.2.8" ]]
+# V1.3.0: Lucky is the recommended graphical Web Gateway.
+grep -q 'Lucky + Reality - 推荐：图形化 Web Gateway' lib/wizard.sh
+grep -q 'LUCKY_PANEL_SSH_TUNNEL' modules/lucky/apply.sh
+grep -q 'vps-init gateway' vps-init
+grep -q '当前 Gateway： Lucky（推荐）' vps-init
+grep -q 'HTTPS Route       : 443 -> Lucky HTTPS 127.0.0.1:8443' vps-init
+grep -q 'Nginx Stream' vps-init
+if [[ -d proxy || -d apps ]]; then
+  echo 'FAIL: v1.3.0 must not ship a duplicate proxy center or app installers' >&2; exit 1
+fi
+
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.3.0" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
