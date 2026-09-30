@@ -72,8 +72,14 @@ gateway_nginx_remove() {
 }
 
 gateway_nginx_verify() {
-  local app_id="$1" domain="$2"
+  local app_id="$1" domain="$2" i
   [[ -L "/etc/nginx/sites-enabled/vps-init-app-${app_id}" ]] || return 1
   nginx -t >/dev/null 2>&1 || return 1
-  curl -fsS -o /dev/null --max-time 20 "https://${domain}/" 2>/dev/null
+  for i in {1..20}; do
+    if curl -fsS -o /dev/null --max-time 12 "https://${domain}/" 2>/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
 }
