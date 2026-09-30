@@ -10,7 +10,7 @@ source "$ROOT_DIR/lib/validate.sh"
 source "$ROOT_DIR/lib/service.sh"
 source "$ROOT_DIR/lib/wizard.sh"
 source "$ROOT_DIR/lib/credentials.sh"
-source "$ROOT_DIR/apps/manager.sh"
+source "$ROOT_DIR/proxy/manager.sh"
 source "$ROOT_DIR/core/preflight.sh"
 source "$ROOT_DIR/core/system.sh"
 source "$ROOT_DIR/core/swap.sh"
@@ -52,8 +52,8 @@ VPS Init ${VERSION}
   vps-init secrets --raw       # 原始 KEY=VALUE
   vps-init passwd               # 修改/重置并同步面板账号密码
   vps-init passwd xui|lucky
-  vps-init apps                # 打开应用中心
-  vps-init app qinglong status
+  vps-init proxy               # 打开反向代理中心
+  vps-init proxy list
   vps-init update
   vps-init logs
 TXT
@@ -165,15 +165,10 @@ show_info_summary() {
   if [[ "$PROFILE" == "lucky-reality" ]]; then
     printf '  %-18s %s\n' "Lucky" "$(systemctl is-active lucky 2>/dev/null || echo inactive)"
   fi
-  if command_exists docker; then
+  if is_true "${ENABLE_DOCKER:-false}"; then
     printf '  %-18s %s\n' "Docker" "$(systemctl is-active docker 2>/dev/null || echo inactive)"
   else
-    printf '  %-18s %s\n' "Docker" "未安装"
-  fi
-  if app_state_exists qinglong; then
-    app_state_load qinglong
-    printf '  %-18s %s\n' "青龙面板" "$(docker inspect -f '{{.State.Status}}' "${CONTAINER:-vpsinit-qinglong}" 2>/dev/null || echo unknown)"
-    [[ -n "${PUBLIC_URL:-}" ]] && printf '  %-18s %s\n' "青龙地址" "$PUBLIC_URL"
+    printf '  %-18s %s\n' "Docker" "未启用"
   fi
 
   if profile_has_xui; then
@@ -338,7 +333,7 @@ menu() {
     [[ -f "$DEFAULT_CFG" ]] && { state_load; echo "当前 Profile：${DEPLOYED_PROFILE:-未部署}"; echo; }
     cat <<'TXT'
   1. 核心部署 / 继续部署
-  2. 应用中心
+  2. 反向代理中心
   3. 运行核心验收
   4. 查看部署信息
   5. 查看当前状态
@@ -362,7 +357,7 @@ TXT
           (( wizard_rc == 42 )) && exit 0
         fi
         ;;
-      2) app_center_menu || true ;;
+      2) proxy_center_menu || true ;;
       3) "$ROOT_DIR/vps-init" verify "$DEFAULT_CFG" || true ;;
       4) show_info_summary "$DEFAULT_CFG" || true ;;
       5) show_status_summary "$DEFAULT_CFG" || true ;;
@@ -408,8 +403,7 @@ case "$cmd" in
     exit 0
     ;;
   passwd) require_root; credential_command "${2:-}"; exit 0 ;;
-  apps) require_root; app_center_menu; exit 0 ;;
-  app) require_root; app_command "${2:-}" "${3:-status}" "${4:-}"; exit 0 ;;
+  proxy) require_root; proxy_command "${2:-menu}" "${3:-}"; exit 0 ;;
   logs) require_root; show_logs; exit 0 ;;
   update) require_root; update_self; exit 0 ;;
   status) require_root; show_status_summary "$cfg"; exit 0 ;;
