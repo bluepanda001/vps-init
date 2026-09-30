@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.2.5 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
+V1.2.6 的目标是把使用体验做成常见 GitHub 一键脚本：第一次只执行一条命令，然后通过中文菜单选择 Profile 和必要参数；以后直接输入 `vps-init` 管理。
 
 ## 一键安装
 
@@ -58,7 +58,7 @@ vps-init
   4. Lucky + Reality
 ```
 
-快速安装只询问真正必要的信息；自定义安装才展开 URI Path、订阅端口、Reality Target、Docker 等参数。
+快速安装只询问真正必要的信息；自定义安装才展开 URI Path、订阅端口、Reality Target、Docker 等参数。对 `nginx-reality` / `lucky-reality`，快速安装默认同时创建 Cloudflare CDN WS 备用节点；自定义安装可关闭。
 
 ## Profile
 
@@ -138,6 +138,37 @@ Nginx Stream ssl_preread
 ```
 
 这里不能依赖 REALITY 自己把普通 HTTPS 回落到 Lucky：REALITY 对未通过鉴权的连接会直接转发到它的 `target`，因此必须在 Xray 前面按 SNI 分流。Lucky 固定使用已校验的 `2.27.2` release；证书由 Cloudflare DNS-01 + Certbot 获取后同步进 Lucky。脚本使用 Lucky 官方运行时 `-rResetUser` 恢复默认管理凭据后，立即通过 loopback API 轮换为 vps-init 持久化的随机账号密码；不会解析或修改加密的 `*.lkcf` 凭据字段。
+
+
+## Cloudflare CDN WS 备用节点
+
+域名 Profile 可启用 `ENABLE_CF_WS=true`。安装向导的快速模式默认开启，自定义模式可选择关闭。脚本会创建第二个 3x-ui 入站，使用 **VLESS + WebSocket**，仅监听 loopback；公网入口默认是 `edge.<ROOT_DOMAIN>`，Cloudflare DNS 会设置为橙云代理。
+
+```text
+Client
+  ↓ TLS + WebSocket
+edge.<domain>:443  (Cloudflare proxied)
+  ↓
+Cloudflare
+  ↓
+VPS public :443
+  ↓ Nginx Stream SNI
+127.0.0.1:8444  Nginx TLS
+  ↓ random WS path
+127.0.0.1:<random>  3x-ui bundled Xray VLESS/WS
+```
+
+Reality 节点仍使用 `node.<domain>:443` 的 DNS-only 入口，两者不会混淆：
+
+```text
+node.<domain>:443 -> Reality 直连（DNS only）
+edge.<domain>:443 -> VLESS/WS/TLS via Cloudflare（橙云）
+```
+
+两个入站共用同一个 SubID。3x-ui Host 会为 CDN 入站写入公网 `TLS / SNI / Host Header / WS Path`，因此 Clash/Mihomo 的标准订阅会同时下发 Reality 和 CDN WS 两个节点。随机 WS Path 与 UUID 首次生成后持久化，幂等重跑不会无故改变。
+
+验收会启动临时 Xray 客户端，通过 `edge.<domain>:443 -> Cloudflare -> Nginx -> VLESS/WS` 建立真实代理，并经本地 SOCKS 请求外网；不是只检查 DNS、端口或 HTTP 状态。
+
 
 ## Cloudflare Token
 
@@ -271,5 +302,5 @@ SHA256SUMS
 - 正式支持 Ubuntu 24.04 LTS。
 - 推荐在全新 VPS 使用。
 - 同一 Profile 可以幂等重跑；不自动进行任意 Profile 之间的无损迁移。
-- `ENABLE_CF_WS`、`ENABLE_CF_PREFERRED`、`ENABLE_CLOUDFLARESUB` 仍为预留扩展，默认关闭；误开会 fail-closed。
+- `ENABLE_CF_WS` 已正式支持域名 Profile；`ENABLE_CF_PREFERRED`、`ENABLE_CLOUDFLARESUB` 仍为预留扩展并保持 fail-closed。
 - 这是个人 VPS 实用安全基线，不是 CIS/企业合规基线。
