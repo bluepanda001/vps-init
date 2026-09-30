@@ -165,10 +165,15 @@ show_info_summary() {
   if [[ "$PROFILE" == "lucky-reality" ]]; then
     printf '  %-18s %s\n' "Lucky" "$(systemctl is-active lucky 2>/dev/null || echo inactive)"
   fi
-  if is_true "${ENABLE_DOCKER:-false}"; then
+  if command_exists docker; then
     printf '  %-18s %s\n' "Docker" "$(systemctl is-active docker 2>/dev/null || echo inactive)"
   else
-    printf '  %-18s %s\n' "Docker" "未启用"
+    printf '  %-18s %s\n' "Docker" "未安装"
+  fi
+  if app_state_exists qinglong; then
+    app_state_load qinglong
+    printf '  %-18s %s\n' "青龙面板" "$(docker inspect -f '{{.State.Status}}' "${CONTAINER:-vpsinit-qinglong}" 2>/dev/null || echo unknown)"
+    [[ -n "${PUBLIC_URL:-}" ]] && printf '  %-18s %s\n' "青龙地址" "$PUBLIC_URL"
   fi
 
   if profile_has_xui; then
