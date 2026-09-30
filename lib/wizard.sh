@@ -221,7 +221,7 @@ SUBSCRIPTION_PORT=$(wizard_shell_quote_value "$W_SUBSCRIPTION_PORT")
 XUI_PANEL_URI_PATH=$(wizard_shell_quote_value "$W_PANEL_PATH")
 XUI_SUB_URI_PATH=$(wizard_shell_quote_value "$W_SUB_PATH")
 ENABLE_DOCKER=$(wizard_shell_quote_value "$W_ENABLE_DOCKER")
-ENABLE_CF_WS="false"
+ENABLE_CF_WS=$(wizard_shell_quote_value "$W_ENABLE_CF_WS")
 ENABLE_CF_PREFERRED="false"
 ENABLE_CLOUDFLARESUB="false"
 EOF2
@@ -387,6 +387,15 @@ wizard_collect() {
   W_SUB_PATH="/zhg/"
   W_SUBSCRIPTION_PORT="2096"
   W_ENABLE_DOCKER="false"
+  W_ENABLE_CF_WS="false"
+  if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
+    W_ENABLE_CF_WS="true"
+    if [[ "$custom" == true ]]; then
+      if ! wizard_yesno "同时部署 Cloudflare CDN WS 备用节点（edge.<域名>）？" y; then
+        W_ENABLE_CF_WS="false"
+      fi
+    fi
+  fi
   if [[ "$custom" == true && "$W_PROFILE" != "base-only" ]]; then
     W_PANEL_PATH="$(normalize_path "$(wizard_prompt_default "3x-ui 面板 URI Path" "/zhg/")")"
     local sub_input
@@ -413,6 +422,9 @@ wizard_collect() {
     echo "Clash/Mihomo      : ON / Routing ON / Auto Detect ON / (?i)(clash|mihomo)"
   fi
   echo "Docker            : $W_ENABLE_DOCKER"
+  if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
+    echo "Cloudflare CDN WS : $W_ENABLE_CF_WS"
+  fi
   echo "------------------------------------------"
   wizard_yesno "确认并开始部署？" y || return 10
 }
