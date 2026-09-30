@@ -46,7 +46,8 @@ VPS Init ${VERSION}
   vps-init preflight [config.env]
   vps-init status [config.env]
   vps-init info [config.env]
-  vps-init secrets
+  vps-init secrets             # 中文分组显示
+  vps-init secrets --raw       # 原始 KEY=VALUE
   vps-init update
   vps-init logs
 TXT
@@ -206,6 +207,83 @@ show_info_summary() {
   echo "============================================================"
 }
 
+secret_value() {
+  local key="$1"
+  [[ -f "$SECRETS_FILE" ]] || return 0
+  awk -v k="$key" 'index($0,k"=")==1 {v=substr($0,length(k)+2)} END{print v}' "$SECRETS_FILE"
+}
+
+secret_line() {
+  local label="$1" key="$2" value
+  value="$(secret_value "$key")"
+  [[ -n "$value" ]] || return 0
+  printf '  %-18s : %s\n' "$label" "$value"
+}
+
+secret_block() {
+  local label="$1" key="$2" value
+  value="$(secret_value "$key")"
+  [[ -n "$value" ]] || return 0
+  printf '  %s：\n    %s\n' "$label" "$value"
+}
+
+show_secrets_pretty() {
+  [[ -f "$SECRETS_FILE" ]] || die "尚未生成 $SECRETS_FILE"
+  state_load
+  local deployed="${DEPLOYED_PROFILE:-unknown}"
+
+  echo "============================================================"
+  echo "                 VPS Init 敏感信息"
+  echo "============================================================"
+  echo "当前 Profile      : $deployed"
+  echo "提示              : 本页含密码、Token 和节点参数，请勿公开分享。"
+  echo
+
+  echo "【一、3x-ui 面板】"
+  secret_line "用户名" XUI_USERNAME
+  secret_line "密码" XUI_PASSWORD
+  secret_line "公网地址" XUI_PUBLIC_URL
+  secret_line "本地地址" XUI_PANEL_LOCAL_URL
+  secret_block "SSH 隧道命令" XUI_PANEL_SSH_TUNNEL
+  echo
+
+  if [[ "$deployed" == "lucky-reality" ]]; then
+    echo "【二、Lucky 面板】"
+    secret_line "用户名" LUCKY_USERNAME
+    secret_line "密码" LUCKY_PASSWORD
+    secret_line "本地地址" LUCKY_LOCAL_URL
+    echo
+  fi
+
+  echo "【三、订阅地址】"
+  secret_block "标准订阅" SUBSCRIPTION_URL
+  secret_block "Clash / Mihomo" SUBSCRIPTION_CLASH_URL
+  secret_block "Mihomo 明确端点" SUBSCRIPTION_MIHOMO_URL
+  echo
+
+  echo "【四、Reality 节点】"
+  secret_line "Target" REALITY_TARGET
+  secret_line "回落限速" REALITY_FALLBACK_LIMIT
+  secret_line "UUID" REALITY_UUID
+  secret_line "Public Key" REALITY_PUBLIC_KEY
+  secret_line "Short ID" REALITY_SHORT_ID
+  secret_block "分享链接" REALITY_SHARE_LINK
+  echo
+
+  if [[ -n "$(secret_value CF_WS_DOMAIN)" || -n "$(secret_value CF_WS_SHARE_LINK)" ]]; then
+    echo "【五、Cloudflare CDN WS 节点】"
+    secret_line "CDN 域名" CF_WS_DOMAIN
+    secret_block "分享链接" CF_WS_SHARE_LINK
+    echo
+  fi
+
+  echo "【高级 / API】"
+  secret_line "3x-ui API Token" XUI_API_TOKEN
+  echo
+  echo "原始 KEY=VALUE 输出：vps-init secrets --raw"
+  echo "============================================================"
+}
+
 show_logs() {
   state_load
   echo "===== x-ui ====="
@@ -277,7 +355,7 @@ TXT
       5)
         if [[ -f "$SECRETS_FILE" ]]; then
           echo "警告：下面包含密码、API Token/节点参数等敏感信息。"
-          if wizard_yesno "确认显示？" n; then cat "$SECRETS_FILE"; fi
+          if wizard_yesno "确认显示？" n; then show_secrets_pretty; fi
         else echo "尚未生成凭据文件。"; fi
         ;;
       6)
@@ -304,7 +382,16 @@ cfg="${2:-$DEFAULT_CFG}"
 case "$cmd" in
   menu) menu; exit 0 ;;
   wizard|install) require_root; wizard_run "$PERSIST_DIR/config.env"; exit $? ;;
-  secrets) require_root; [[ -f "$SECRETS_FILE" ]] || die "尚未生成 $SECRETS_FILE"; cat "$SECRETS_FILE"; exit 0 ;;
+  secrets)
+    require_root
+    [[ -f "$SECRETS_FILE" ]] || die "尚未生成 $SECRETS_FILE"
+    case "${2:-}" in
+      "") show_secrets_pretty ;;
+      --raw) cat "$SECRETS_FILE" ;;
+      *) die "secrets 仅支持：vps-init secrets 或 vps-init secrets --raw" ;;
+    esac
+    exit 0
+    ;;
   logs) require_root; show_logs; exit 0 ;;
   update) require_root; update_self; exit 0 ;;
   status) require_root; show_status_summary "$cfg"; exit 0 ;;
