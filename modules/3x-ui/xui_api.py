@@ -163,6 +163,12 @@ def create_ws(args: argparse.Namespace) -> dict[str,Any]:
         settings=settings if isinstance(settings,dict) else {}
         clients=settings.get("clients") if isinstance(settings.get("clients"),list) else []
         cl=clients[0] if clients and isinstance(clients[0],dict) else {}
+        if not cl or not cl.get("id"):
+            raise RuntimeError(f"existing {args.remark} has no usable client")
+        client_changed=False
+        if str(cl.get("subId") or "") != args.sub_id:
+            cl["subId"]=args.sub_id
+            client_changed=True
         st=existing.get("streamSettings")
         if isinstance(st,str):
             try: st=json.loads(st)
@@ -176,7 +182,7 @@ def create_ws(args: argparse.Namespace) -> dict[str,Any]:
         migrated=False
         if existing.get("protocol") != "vless":
             raise RuntimeError(f"existing {args.remark} is not VLESS; refusing automatic migration")
-        if port != args.port or listen != args.listen or path != args.path or st.get("network") != "ws" or st.get("security") != "none":
+        if client_changed or port != args.port or listen != args.listen or path != args.path or st.get("network") != "ws" or st.get("security") != "none":
             st={
               "network":"ws","security":"none",
               "wsSettings":{"acceptProxyProtocol":False,"path":args.path,"host":"","headers":{},"heartbeatPeriod":0}
