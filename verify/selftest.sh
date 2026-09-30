@@ -211,20 +211,17 @@ grep -q 'secret_set LUCKY_PASSWORD' lib/credentials.sh
 grep -q '/opt/lucky/lucky -rResetUser' lib/credentials.sh
 grep -q 'Authorization: Bearer' lib/credentials.sh
 
-# V1.3.0: application center MVP.
-grep -q 'source "$ROOT_DIR/apps/manager.sh"' vps-init
-grep -q 'vps-init apps' vps-init
-grep -q 'vps-init app qinglong status' vps-init
-grep -q 'ensure_docker_runtime' optional/docker/apply.sh
-grep -q 'APP_STATE_DIR=' apps/common.sh
-grep -q '127.0.0.1:.*:5700' apps/qinglong/app.sh
-grep -q 'whyour/qinglong:latest' apps/qinglong/app.sh
-grep -q 'vps-init-app-' apps/gateway/nginx.sh
-grep -q -- '--proxied' apps/gateway/nginx.sh
-grep -q 'listen 127.0.0.1:8443 ssl' apps/gateway/nginx.sh
-grep -q 'gateway_nginx_verify' apps/qinglong/app.sh
-if grep -q '0.0.0.0:.*5700' apps/qinglong/app.sh; then
-  echo 'FAIL: QingLong must not bind its application port publicly' >&2; exit 1
+# V1.3.0: reverse proxy center. Applications remain user-managed.
+grep -q 'source "$ROOT_DIR/proxy/manager.sh"' vps-init
+grep -q 'vps-init proxy' vps-init
+grep -q 'PROXY_STATE_DIR=' proxy/common.sh
+grep -q 'listen 127.0.0.1:8443 ssl' proxy/nginx.sh
+grep -q 'proxy_pass .*://.*:' proxy/nginx.sh
+grep -q -- '--proxied' proxy/nginx.sh
+grep -q '不会删除你的 Docker/应用' proxy/manager.sh
+grep -q '请先把应用本身安装并运行正常' proxy/manager.sh
+if find . -path './apps/*' -type f | grep . >/dev/null; then
+  echo 'FAIL: v1.3.0 proxy center must not ship application installers' >&2; exit 1
 fi
 
 if grep -q 'XUI_PASSWORD=' config.env.example; then
