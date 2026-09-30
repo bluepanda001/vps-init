@@ -68,7 +68,12 @@ module_reality() {
 
   out=$(python3 "$ROOT_DIR/modules/3x-ui/xui_api.py" --base "$api" --token "$XUI_API_TOKEN" create-reality \
     --remark VPSINIT-Reality --listen "$listen" --port "$port" --email "$email" --sub-id "$SUB_ID" --short-id "$short" \
-    --target-mode "$target_mode" --target "$target_value" --candidates "$REALITY_CANDIDATES")
+    --target-mode "$target_mode" --target "$target_value" --candidates "$REALITY_CANDIDATES" \
+    --fallback-after-bytes "$REALITY_FALLBACK_AFTER_BYTES" \
+    --fallback-upload-bps "$REALITY_FALLBACK_UPLOAD_BPS" \
+    --fallback-upload-burst-bps "$REALITY_FALLBACK_UPLOAD_BURST_BPS" \
+    --fallback-download-bps "$REALITY_FALLBACK_DOWNLOAD_BPS" \
+    --fallback-download-burst-bps "$REALITY_FALLBACK_DOWNLOAD_BURST_BPS")
 
   REALITY_TARGET_SELECTED="$(jq -r '.target // empty' <<<"$out")"
   REALITY_SERVER_NAME="$(jq -r '.serverName // empty' <<<"$out")"
@@ -114,6 +119,7 @@ module_reality() {
   secret_set REALITY_PUBLIC_KEY "$REALITY_PUBLIC_KEY"
   secret_set REALITY_SHORT_ID "$REALITY_SHORT_ID"
   secret_set REALITY_TARGET "$REALITY_TARGET_SELECTED"
+  secret_set REALITY_FALLBACK_LIMIT "after=${REALITY_FALLBACK_AFTER_BYTES}B upload=${REALITY_FALLBACK_UPLOAD_BPS}B/s download=${REALITY_FALLBACK_DOWNLOAD_BPS}B/s"
   local share_name share_name_enc share_link
   share_name="${SERVER_NAME:-VPSINIT-Reality}"
   share_name_enc="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$share_name")"
