@@ -104,31 +104,37 @@ module_subscription() {
   state_set SUBSCRIPTION_PATH "$SUBSCRIPTION_PATH"
   state_set SUB_ID "$SUB_ID"
 
-  local sub_listen sub_uri cert_file key_file
+  local sub_listen sub_uri public_origin clash_base mihomo_base cert_file key_file
   cert_file=""
   key_file=""
   case "$SUBSCRIPTION_EXPOSE_MODE_RESOLVED" in
     direct-ip-https)
       module_ip_certificate
       sub_listen=""
-      sub_uri="https://${SERVER_IP}:${SUBSCRIPTION_PORT}${SUBSCRIPTION_PATH}"
+      public_origin="https://${SERVER_IP}:${SUBSCRIPTION_PORT}"
+      sub_uri="${public_origin}${SUBSCRIPTION_PATH}"
       cert_file="$IP_CERT_FILE"
       key_file="$IP_KEY_FILE"
       ;;
     nginx-https|lucky-https)
       sub_listen="127.0.0.1"
-      sub_uri="https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}"
+      public_origin="https://${NODE_DOMAIN}"
+      sub_uri="${public_origin}${SUBSCRIPTION_PATH}"
       ;;
     *) die "未知订阅暴露模式: $SUBSCRIPTION_EXPOSE_MODE_RESOLVED" ;;
   esac
+  clash_base="${public_origin}/clash/"
+  mihomo_base="${public_origin}/mihomo/"
 
   local patch api
-  patch=$(jq -cn     --arg listen "$sub_listen" --argjson port "$SUBSCRIPTION_PORT" --arg path "$SUBSCRIPTION_PATH"     --arg uri "$sub_uri" --arg cert "$cert_file" --arg key "$key_file"     '{subEnable:true,subListen:$listen,subPort:$port,subPath:$path,subURI:$uri,subCertFile:$cert,subKeyFile:$key,subJsonEnable:false,subClashEnable:true,subClashPath:"/clash/",subClashURI:"",subClashEnableRouting:true,subClashAutoDetect:true,subClashUserAgentRegex:"(?i)(clash|mihomo)"}')
+  patch=$(jq -cn     --arg listen "$sub_listen" --argjson port "$SUBSCRIPTION_PORT" --arg path "$SUBSCRIPTION_PATH"     --arg uri "$sub_uri" --arg clash_uri "$clash_base" --arg cert "$cert_file" --arg key "$key_file"     '{subEnable:true,subListen:$listen,subPort:$port,subPath:$path,subURI:$uri,subCertFile:$cert,subKeyFile:$key,subJsonEnable:false,subClashEnable:true,subClashPath:"/clash/",subClashURI:$clash_uri,subClashEnableRouting:true,subClashAutoDetect:true,subClashUserAgentRegex:"(?i)(clash|mihomo)"}')
   api="$(xui_base_url)"
   python3 "$ROOT_DIR/modules/3x-ui/xui_api.py" --base "$api" --token "$XUI_API_TOKEN" patch-settings --json "$patch" >/dev/null
   systemctl restart x-ui
   sleep 2
   secret_set SUBSCRIPTION_BASE_URL "$sub_uri"
   secret_set SUBSCRIPTION_URL "${sub_uri}${SUB_ID}"
-  log_ok "订阅服务已配置：$SUBSCRIPTION_EXPOSE_MODE_RESOLVED（公网只提供 HTTPS）。"
+  secret_set SUBSCRIPTION_CLASH_URL "${clash_base}${SUB_ID}"
+  secret_set SUBSCRIPTION_MIHOMO_URL "${mihomo_base}${SUB_ID}"
+  log_ok "订阅服务已配置：$SUBSCRIPTION_EXPOSE_MODE_RESOLVED（标准 + Clash/Mihomo HTTPS）。"
 }
