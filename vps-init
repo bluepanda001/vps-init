@@ -10,7 +10,6 @@ source "$ROOT_DIR/lib/validate.sh"
 source "$ROOT_DIR/lib/service.sh"
 source "$ROOT_DIR/lib/wizard.sh"
 source "$ROOT_DIR/lib/credentials.sh"
-source "$ROOT_DIR/proxy/manager.sh"
 source "$ROOT_DIR/core/preflight.sh"
 source "$ROOT_DIR/core/system.sh"
 source "$ROOT_DIR/core/swap.sh"
@@ -52,8 +51,6 @@ VPS Init ${VERSION}
   vps-init secrets --raw       # 原始 KEY=VALUE
   vps-init passwd               # 修改/重置并同步面板账号密码
   vps-init passwd xui|lucky
-  vps-init proxy               # 打开反向代理中心
-  vps-init proxy list
   vps-init update
   vps-init logs
 TXT
@@ -332,21 +329,20 @@ menu() {
     echo
     [[ -f "$DEFAULT_CFG" ]] && { state_load; echo "当前 Profile：${DEPLOYED_PROFILE:-未部署}"; echo; }
     cat <<'TXT'
-  1. 核心部署 / 继续部署
-  2. 反向代理中心
-  3. 运行核心验收
-  4. 查看部署信息
-  5. 查看当前状态
-  6. 查看敏感凭据
-  7. 修改管理账号 / 密码
-  8. 编辑配置
-  9. 更新 VPS Init
- 10. 查看服务日志
- 11. 重新运行核心安装向导
+  1. 一键部署 / 继续部署
+  2. 运行验收
+  3. 查看部署信息
+  4. 查看当前状态
+  5. 查看敏感凭据
+  6. 修改管理账号 / 密码
+  7. 编辑配置
+  8. 更新 VPS Init
+  9. 查看服务日志
+ 10. 重新运行安装向导
   0. 退出
 TXT
     local n
-    read -r -p "请选择 [0-11]: " n
+    read -r -p "请选择 [0-10]: " n
     case "$n" in
       1)
         if [[ -f "$DEFAULT_CFG" ]]; then
@@ -357,24 +353,23 @@ TXT
           (( wizard_rc == 42 )) && exit 0
         fi
         ;;
-      2) proxy_center_menu || true ;;
-      3) "$ROOT_DIR/vps-init" verify "$DEFAULT_CFG" || true ;;
-      4) show_info_summary "$DEFAULT_CFG" || true ;;
-      5) show_status_summary "$DEFAULT_CFG" || true ;;
-      6)
+      2) "$ROOT_DIR/vps-init" verify "$DEFAULT_CFG" || true ;;
+      3) show_info_summary "$DEFAULT_CFG" || true ;;
+      4) show_status_summary "$DEFAULT_CFG" || true ;;
+      5)
         if [[ -f "$SECRETS_FILE" ]]; then
           echo "警告：下面包含密码、API Token/节点参数等敏感信息。"
           if wizard_yesno "确认显示？" n; then show_secrets_pretty; fi
         else echo "尚未生成凭据文件。"; fi
         ;;
-      7) credential_menu || true ;;
-      8)
+      6) credential_menu || true ;;
+      7)
         [[ -f "$DEFAULT_CFG" ]] || { echo "尚无配置，先运行安装向导。"; "$ROOT_DIR/vps-init" wizard; continue; }
         "${EDITOR:-vi}" "$DEFAULT_CFG"
         ;;
-      9) update_self || true ;;
-      10) show_logs || true ;;
-      11)
+      8) update_self || true ;;
+      9) show_logs || true ;;
+      10)
         local wizard_rc=0
         "$ROOT_DIR/vps-init" wizard || wizard_rc=$?
         (( wizard_rc == 42 )) && exit 0
@@ -403,7 +398,6 @@ case "$cmd" in
     exit 0
     ;;
   passwd) require_root; credential_command "${2:-}"; exit 0 ;;
-  proxy) require_root; proxy_command "${2:-menu}" "${3:-}"; exit 0 ;;
   logs) require_root; show_logs; exit 0 ;;
   update) require_root; update_self; exit 0 ;;
   status) require_root; show_status_summary "$cfg"; exit 0 ;;
