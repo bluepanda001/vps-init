@@ -34,4 +34,8 @@ validate_config() {
   fi
 
   case "$ENABLE_DOCKER" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) die "ENABLE_DOCKER 只能是 true/false。" ;; esac
+  case "$ENABLE_CF_WS" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) die "ENABLE_CF_WS 只能是 true/false。" ;; esac
+  if is_true "$ENABLE_CF_WS" && ! profile_has_domain; then
+    die "ENABLE_CF_WS=true 需要 nginx-reality 或 lucky-reality 域名 Profile。"
+  fi
 }
