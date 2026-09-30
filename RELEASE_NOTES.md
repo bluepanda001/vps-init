@@ -1,5 +1,13 @@
 # Release Notes
 
+## v1.2.8
+
+- 新增 `vps-init passwd` 凭据管理入口，可交互修改 / 重置 3x-ui 与 Lucky 的管理用户名和密码。
+- 3x-ui 修改完成后会立即重启并验证本地 API，同时把新用户名、密码和 API Token 同步写入 root-only state / secrets。
+- Lucky 优先使用当前已保存凭据修改；如果用户曾在网页里手工改过导致保存凭据失效，会使用 Lucky 官方本机恢复命令重置管理入口，再写入用户新设置的凭据。
+- 主菜单新增“修改管理账号 / 密码”。也支持 `vps-init passwd xui` 和 `vps-init passwd lucky` 直接进入指定面板。
+- 密码输入不回显，至少 8 个字符并要求二次确认；修改后再运行 `vps-init secrets` 会显示同步后的新密码。
+
 ## v1.2.7
 
 - REALITY 安全加固：不再把 Cloudflare 共享 CDN 域名作为自动/手动 target；旧版本若已经使用此类高风险 target，重跑时会自动迁移到扫描出的安全候选。
