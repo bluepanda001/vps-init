@@ -157,8 +157,8 @@ show_info_summary() {
     printf '  %-18s %s\n' "3x-ui" "${XUI_VERSION:-unknown} ($(systemctl is-active x-ui 2>/dev/null || echo inactive))"
     printf '  %-18s %s\n' "Xray" "3x-ui bundled"
   fi
-  if [[ "$PROFILE" == "nginx-reality" ]]; then
-    printf '  %-18s %s\n' "Nginx" "$(systemctl is-active nginx 2>/dev/null || echo inactive)"
+  if [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]]; then
+    printf '  %-18s %s\n' "Nginx Stream" "$(systemctl is-active nginx 2>/dev/null || echo inactive)"
   fi
   if [[ "$PROFILE" == "lucky-reality" ]]; then
     printf '  %-18s %s\n' "Lucky" "$(systemctl is-active lucky 2>/dev/null || echo inactive)"
@@ -353,8 +353,8 @@ show_logs() {
   echo "===== x-ui ====="
   systemctl status x-ui --no-pager 2>/dev/null || true
   journalctl -u x-ui -n 80 --no-pager 2>/dev/null || true
-  if [[ "${DEPLOYED_PROFILE:-}" == "nginx-reality" ]]; then
-    echo "===== nginx ====="
+  if [[ "${DEPLOYED_PROFILE:-}" == "nginx-reality" || "${DEPLOYED_PROFILE:-}" == "lucky-reality" ]]; then
+    echo "===== nginx stream ====="
     systemctl status nginx --no-pager 2>/dev/null || true
     journalctl -u nginx -n 80 --no-pager 2>/dev/null || true
   fi
