@@ -333,7 +333,6 @@ core_network
 core_firewall
 core_fail2ban
 optional_docker
-optional_cf_ws
 optional_cf_preferred
 optional_cloudflaresub
 
@@ -352,6 +351,7 @@ if profile_has_xui; then
       module_nginx
       ;;
   esac
+  optional_cf_ws
 fi
 
 copy_project_persistent
