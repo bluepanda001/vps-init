@@ -88,6 +88,71 @@ verify_reality_handshake() {
   return "$rc"
 }
 
+
+verify_cf_ws_handshake() {
+  is_true "${ENABLE_CF_WS:-false}" || return 0
+  [[ -x "${XUI_XRAY_BIN:-}" ]] || return 1
+  [[ -n "${CF_WS_UUID:-}" && -n "${CF_WS_DOMAIN:-}" && -n "${CF_WS_PATH:-}" ]] || return 1
+
+  local td cfg logf pid rc=1 socks_port=19081 i
+  td="$(mktemp -d)"
+  cfg="$td/client.json"
+  logf="$td/xray.log"
+  chmod 700 "$td"
+
+  jq -n \
+    --arg uuid "$CF_WS_UUID" \
+    --arg host "$CF_WS_DOMAIN" \
+    --arg path "$CF_WS_PATH" \
+    --argjson socks "$socks_port" \
+    '{
+      log:{loglevel:"warning"},
+      inbounds:[{listen:"127.0.0.1",port:$socks,protocol:"socks",settings:{udp:false}}],
+      outbounds:[{
+        tag:"proxy",protocol:"vless",
+        settings:{address:$host,port:443,id:$uuid,encryption:"none"},
+        streamSettings:{
+          network:"ws",security:"tls",
+          tlsSettings:{serverName:$host,fingerprint:"chrome",allowInsecure:false},
+          wsSettings:{path:$path,headers:{Host:$host}}
+        }
+      }]
+    }' > "$cfg" || { rm -rf "$td"; return 1; }
+  chmod 600 "$cfg"
+
+  "$XUI_XRAY_BIN" run -test -c "$cfg" >/dev/null 2>&1 || { rm -rf "$td"; return 1; }
+  "$XUI_XRAY_BIN" run -c "$cfg" >"$logf" 2>&1 &
+  pid=$!
+  for i in {1..20}; do
+    if ss -H -ltn "sport = :${socks_port}" 2>/dev/null | grep . >/dev/null; then break; fi
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.15
+  done
+  if curl --socks5-hostname "127.0.0.1:${socks_port}" -fsS -o /dev/null --max-time 20 https://www.google.com/generate_204; then
+    rc=0
+  fi
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  rm -rf "$td"
+  return "$rc"
+}
+
+verify_cf_ws_subscription() {
+  local body
+  body="$(mihomo_body_domain)" || return 1
+  grep -F "  server: ${CF_WS_DOMAIN}" <<<"$body" >/dev/null &&
+    grep -F '  port: 443' <<<"$body" >/dev/null &&
+    grep -F '  network: ws' <<<"$body" >/dev/null &&
+    grep -F "      path: ${CF_WS_PATH}" <<<"$body" >/dev/null
+}
+
+verify_cf_ws_dns_is_proxied() {
+  local ips
+  ips="$(getent ahostsv4 "$CF_WS_DOMAIN" 2>/dev/null | awk '{print $1}' | sort -u)"
+  [[ -n "$ips" ]] || return 1
+  ! grep -Fx "$SERVER_IP" <<<"$ips" >/dev/null
+}
+
 verify_all() {
   state_load
   local failed=0 out="" cc qdisc sshd_effective
@@ -158,6 +223,16 @@ verify_all() {
     fi
     if profile_has_domain && profile_has_xui; then
       check "public HTTPS panel through 443" curl -fsS --max-time 10 --resolve "${PANEL_DOMAIN}:443:127.0.0.1" -o /dev/null "https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"
+    fi
+    if is_true "${ENABLE_CF_WS:-false}"; then
+      echo "CDN WS endpoint: ${CF_WS_DOMAIN:-unknown}:443${CF_WS_PATH:-}"
+      check "CDN WS Xray loopback listener" bash -c "ss -H -ltnp 'sport = :${CF_WS_INTERNAL_PORT}' | grep -i xray >/dev/null"
+      check "CDN WS Nginx TLS frontend 8444" bash -c "ss -H -ltnp 'sport = :8444' | grep -i nginx >/dev/null"
+      check "CDN WS SNI stream mapping" grep -F "${CF_WS_DOMAIN}" /etc/nginx/stream-conf.d/vps-init-extra-sni.map
+      check "Cloudflare CDN DNS is proxied" verify_cf_ws_dns_is_proxied
+      check "public Cloudflare HTTPS frontend" curl -fsS --max-time 15 -o /dev/null "https://${CF_WS_DOMAIN}/"
+      check "Mihomo subscription advertises CDN WS endpoint" verify_cf_ws_subscription
+      check "Cloudflare CDN WS end-to-end proxy" verify_cf_ws_handshake
     fi
     if [[ "$PROFILE" == nginx-reality || "$PROFILE" == lucky-reality ]]; then
       check "nginx stream ssl_preread support" bash -c "nginx -V 2>&1 | grep -- '--with-stream_ssl_preread_module' >/dev/null"
