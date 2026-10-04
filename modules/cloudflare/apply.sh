@@ -27,6 +27,19 @@ Cloudflare 前置条件：
   2. 域名注册商 Nameserver 已改为 Cloudflare 分配值；
   3. Cloudflare Zone 状态已经是 Active；
   4. Token 必须能读取 ${ROOT_DOMAIN} 并写 DNS（Zone Read + DNS Write）。
+
+Cloudflare API Token 创建页面：
+  https://dash.cloudflare.com/profile/api-tokens
+
+推荐创建方式：
+  Create Token -> Edit zone DNS 模板
+  Zone Resources -> 只选择 ${ROOT_DOMAIN}
+
+需要权限：
+  Zone / Zone / Read
+  Zone / DNS / Edit
+
+提示：大多数终端可直接 Ctrl+点击上面的 https:// 地址；如果不能，复制到本机浏览器打开。
 EOF2
 
     [[ -t 0 ]] || die "缺少有效 Cloudflare Token；非交互模式无法安全读取 Token。"
