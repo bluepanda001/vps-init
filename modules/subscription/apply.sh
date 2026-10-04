@@ -30,8 +30,13 @@ module_ip_certificate() {
   local cert=/root/cert/ip/fullchain.pem key=/root/cert/ip/privkey.pem
   local acme=/root/.acme.sh/acme.sh cert_valid=false
 
-  if [[ -s "$cert" && -s "$key" ]] &&      openssl x509 -checkend 172800 -noout -in "$cert" >/dev/null 2>&1; then
+  if [[ -s "$cert" && -s "$key" ]] &&
+     openssl x509 -checkend 172800 -noout -in "$cert" >/dev/null 2>&1 &&
+     cert_has_ip_san "$cert" "$SERVER_IP" &&
+     cert_key_match "$cert" "$key"; then
     cert_valid=true
+  elif [[ -e "$cert" || -e "$key" ]]; then
+    log_warn "现有 IP 证书未通过有效期/SAN/密钥匹配检查，将为当前公网 IPv4 ${SERVER_IP} 重新签发。"
   fi
 
   [[ -r /usr/bin/x-ui ]] || die "未找到 3x-ui 管理脚本 /usr/bin/x-ui，无法初始化其 acme.sh 环境。"
@@ -75,7 +80,8 @@ module_ip_certificate() {
 
   [[ -s "$cert" && -s "$key" ]] || die "IP SSL 流程结束后未找到证书；不会降级为 HTTP。"
   openssl x509 -checkend 86400 -noout -in "$cert" >/dev/null 2>&1 || die "IP SSL 证书有效期异常。"
-  openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null |     grep -Fq "IP Address:${SERVER_IP}" || die "IP SSL 证书 SAN 不包含当前公网 IPv4 ${SERVER_IP}。"
+  cert_has_ip_san "$cert" "$SERVER_IP" || die "IP SSL 证书 SAN 不包含当前公网 IPv4 ${SERVER_IP}。"
+  cert_key_match "$cert" "$key" || die "IP SSL 证书与私钥不匹配。"
 
   ensure_acme_renewal "$acme"
 

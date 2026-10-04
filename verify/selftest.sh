@@ -3,7 +3,7 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 for f in vps-init $(find . -type f -name '*.sh' ! -path './verify/selftest.sh' | sort); do bash -n "$f"; done
-python3 -m py_compile modules/3x-ui/xui_api.py modules/cloudflare/cloudflare.py modules/lucky/lucky_api.py
+python3 -m py_compile modules/3x-ui/xui_api.py modules/cloudflare/cloudflare.py modules/lucky/lucky_api.py optional/docker/merge_daemon.py verify/tests/test_lucky_behavior.py verify/tests/test_docker_merge.py
 find modules -type d -name '__pycache__' -prune -exec rm -rf {} +
 for p in base-only lucky-web reality-only nginx-reality lucky-reality; do
   cfg=$(mktemp)
@@ -295,7 +295,22 @@ grep -q 'secret_set LUCKY_SAFE_URL' modules/lucky/apply.sh
 grep -q 'secret_line "安全入口" LUCKY_SAFE_URL' vps-init
 grep -q 'Lucky SafeURL' verify/verify.sh
 grep -q 'https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}' vps-init
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.3.5" ]]
+python3 verify/tests/test_lucky_behavior.py
+python3 verify/tests/test_docker_merge.py
+bash verify/tests/test_shell_behaviors.sh
+
+# Stability v1.3.6: behavioral regression coverage and safety boundaries.
+grep -q 'systemd-run --quiet --unit=' core/ssh.sh
+grep -q 'render_ssh_stage_config' core/ssh.sh
+grep -q 'VPSINIT_VERSION=' vps-init
+grep -q 'vps-init upgrade-system' vps-init
+if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
+  echo 'FAIL: Cloudflare validation must not delete the saved token before replacement' >&2
+  exit 1
+fi
+grep -q 'cert_has_ip_san "$cert" "$SERVER_IP"' modules/subscription/apply.sh
+grep -q 'cert_key_match "$cert" "$key"' modules/subscription/apply.sh
+[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.6" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh

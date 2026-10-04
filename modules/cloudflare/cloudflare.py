@@ -2,8 +2,14 @@
 from __future__ import annotations
 import argparse,json,os,re,sys,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
-TOKEN_FILE=Path('/root/.secrets/cloudflare.ini')
+TOKEN_FILE=Path(os.environ.get('VPSINIT_CLOUDFLARE_TOKEN_FILE','/root/.secrets/cloudflare.ini'))
 API='https://api.cloudflare.com/client/v4'
+
+class CloudflareAuthError(RuntimeError):
+    pass
+
+class CloudflareTransientError(RuntimeError):
+    pass
 
 def token():
     env=os.environ.get('CLOUDFLARE_API_TOKEN','').strip()
@@ -18,8 +24,21 @@ def call(method,path,body=None):
     req=urllib.request.Request(API+path,data=data,method=method,headers={'Authorization':'Bearer '+token(),'Content-Type':'application/json','User-Agent':'vps-init/1'})
     try:
       with urllib.request.urlopen(req,timeout=20) as r: out=json.loads(r.read().decode())
-    except urllib.error.HTTPError as e: raise RuntimeError(f'Cloudflare HTTP {e.code}: {e.read()[:500]!r}') from None
-    if not out.get('success'): raise RuntimeError('Cloudflare API error: '+json.dumps(out.get('errors'),ensure_ascii=False))
+    except urllib.error.HTTPError as e:
+      detail=e.read()[:500]
+      if e.code in (401,403):
+        raise CloudflareAuthError(f'Cloudflare HTTP {e.code}: {detail!r}') from None
+      if e.code == 429 or e.code >= 500:
+        raise CloudflareTransientError(f'Cloudflare HTTP {e.code}: {detail!r}') from None
+      raise RuntimeError(f'Cloudflare HTTP {e.code}: {detail!r}') from None
+    except (urllib.error.URLError,TimeoutError) as e:
+      raise CloudflareTransientError(f'Cloudflare network error: {e}') from None
+    if not out.get('success'):
+      errors=out.get('errors') or []
+      codes={e.get('code') for e in errors if isinstance(e,dict)}
+      if codes & {10000,9103,9109,6111}:
+        raise CloudflareAuthError('Cloudflare API auth error: '+json.dumps(errors,ensure_ascii=False))
+      raise RuntimeError('Cloudflare API error: '+json.dumps(errors,ensure_ascii=False))
     return out
 
 def zone_id(name):
@@ -49,5 +68,7 @@ def main():
       else:
         zid=zone_id(args.zone); upsert(zid,args.name,args.ip,args.type,args.proxied); print(json.dumps({'ok':True,'zone_id':zid,'name':args.name,'type':args.type,'proxied':bool(args.proxied)}))
       return 0
+    except CloudflareAuthError as e: print(f'cloudflare auth error: {e}',file=sys.stderr); return 10
+    except CloudflareTransientError as e: print(f'cloudflare transient error: {e}',file=sys.stderr); return 11
     except Exception as e: print(f'cloudflare error: {e}',file=sys.stderr); return 2
 if __name__=='__main__': raise SystemExit(main())

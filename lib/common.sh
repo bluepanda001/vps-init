@@ -165,6 +165,27 @@ normalize_path() {
   printf '%s' "$p"
 }
 
+cert_key_match() {
+  local cert="$1" key="$2" cert_fp key_fp
+  [[ -s "$cert" && -s "$key" ]] || return 1
+  cert_fp="$(
+    openssl x509 -in "$cert" -pubkey -noout 2>/dev/null |
+      openssl pkey -pubin -outform DER 2>/dev/null |
+      sha256sum | awk '{print $1}'
+  )"
+  key_fp="$(
+    openssl pkey -in "$key" -pubout -outform DER 2>/dev/null |
+      sha256sum | awk '{print $1}'
+  )"
+  [[ -n "$cert_fp" && "$cert_fp" == "$key_fp" ]]
+}
+
+cert_has_ip_san() {
+  local cert="$1" ip="$2"
+  openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null |
+    grep -Fq "IP Address:${ip}"
+}
+
 profile_has_domain() { [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" || "$PROFILE" == "lucky-web" ]]; }
 profile_has_xui() { [[ "$PROFILE" == "reality-only" || "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]]; }
 profile_has_lucky() { [[ "$PROFILE" == "lucky-reality" || "$PROFILE" == "lucky-web" ]]; }
@@ -188,7 +209,6 @@ resolve_auto_settings() {
   [[ -n "${SUBSCRIPTION_PORT_SELECTED:-}" ]] && SUBSCRIPTION_PORT="$SUBSCRIPTION_PORT_SELECTED"
 
   if profile_has_domain; then
-    LUCKY_DOMAIN="${LUCKY_DOMAIN_OVERRIDE:-lucky.${ROOT_DOMAIN}}"
     LUCKY_DOMAIN="${LUCKY_DOMAIN_OVERRIDE:-lucky.${ROOT_DOMAIN}}"
     PANEL_DOMAIN="${PANEL_DOMAIN_OVERRIDE:-xui.${ROOT_DOMAIN}}"
     NODE_DOMAIN="${NODE_DOMAIN_OVERRIDE:-node.${ROOT_DOMAIN}}"

@@ -2,9 +2,9 @@
 module_cloudflare() {
   profile_has_domain || return 0
   [[ "$DNS_PROVIDER" == "cloudflare" ]] || die "仅支持 Cloudflare。"
-  mkdir -p /root/.secrets
-  chmod 700 /root/.secrets
-  local token_file=/root/.secrets/cloudflare.ini
+  local token_file="${VPSINIT_CLOUDFLARE_TOKEN_FILE:-/root/.secrets/cloudflare.ini}"
+  mkdir -p "$(dirname "$token_file")"
+  chmod 700 "$(dirname "$token_file")"
 
   # Validate against the actual target zone instead of /user/tokens/verify.
   # This works for both user-owned (cfut_) and account-owned (cfat_) tokens.
@@ -13,11 +13,23 @@ module_cloudflare() {
   while true; do
     if [[ -s "$token_file" ]]; then
       chmod 600 "$token_file"
+      local saved_rc=0
       if python3 "$ROOT_DIR/modules/cloudflare/cloudflare.py" verify --zone "$ROOT_DOMAIN" >/dev/null 2>&1; then
         break
+      else
+        saved_rc=$?
       fi
-      log_warn "已保存的 Cloudflare Token 无法访问 Active Zone ${ROOT_DOMAIN}，将重新输入。"
-      rm -f "$token_file"
+      case "$saved_rc" in
+        11)
+          die "Cloudflare 临时不可用/网络异常；已保留现有 Token 文件，不会覆盖。稍后直接重跑即可。"
+          ;;
+        10)
+          log_warn "已保存的 Cloudflare Token 鉴权失败；旧文件暂时保留，只有新 Token 验证成功后才会替换。"
+          ;;
+        *)
+          log_warn "已保存的 Cloudflare Token 无法访问 Active Zone ${ROOT_DOMAIN}；旧文件暂时保留，只有新 Token 验证成功后才会替换。"
+          ;;
+      esac
     fi
 
     cat >&2 <<EOF2
@@ -52,18 +64,28 @@ EOF2
       continue
     fi
 
+    local new_rc=0
     if CLOUDFLARE_API_TOKEN="$cf_token" \
       python3 "$ROOT_DIR/modules/cloudflare/cloudflare.py" verify --zone "$ROOT_DOMAIN" >/dev/null 2>&1; then
       umask 077
-      printf 'dns_cloudflare_api_token = %s\n' "$cf_token" > "$token_file"
-      chmod 600 "$token_file"
+      local token_tmp
+      token_tmp="$(mktemp "$(dirname "$token_file")/.cloudflare.ini.new.XXXXXX")"
+      printf 'dns_cloudflare_api_token = %s\n' "$cf_token" > "$token_tmp"
+      chmod 600 "$token_tmp"
+      mv -f "$token_tmp" "$token_file"
       unset cf_token
-      log_ok "Cloudflare Token 已验证，可访问目标 Zone：${ROOT_DOMAIN}"
+      log_ok "Cloudflare Token 已验证并原子替换，可访问目标 Zone：${ROOT_DOMAIN}"
       break
+    else
+      new_rc=$?
     fi
 
     unset cf_token
-    log_warn "Token 验证失败；请检查 Token、Zone 范围、Zone Read/DNS Write 权限后重新粘贴。"
+    if [[ "$new_rc" == 11 ]]; then
+      log_warn "Cloudflare 当前网络/API 临时异常；旧 Token 文件保持不变。请稍后重试。"
+    else
+      log_warn "Token 验证失败；旧 Token 文件保持不变。请检查 Token、Zone 范围、Zone Read/DNS Write 权限后重新粘贴。"
+    fi
   done
 
   if [[ "$PROFILE" == "lucky-web" ]]; then

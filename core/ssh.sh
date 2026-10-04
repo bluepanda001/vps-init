@@ -40,29 +40,73 @@ verify_root_key_policy() {
   fi
 }
 
-write_ssh_stage_config() {
-  # OpenSSH 对多数关键字采用 first-value-wins。00-00-vps-init.conf 必须排在
-  # 常见的 00-hardening.conf / 00-cloud-init.conf 前面，否则它们的 no 会覆盖项目设置。
-  local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf legacy
-  backup_file "$dropin"
-  for legacy in /etc/ssh/sshd_config.d/00-vps-init.conf /etc/ssh/sshd_config.d/99-vps-init.conf; do
-    if [[ -f "$legacy" ]]; then backup_file "$legacy"; rm -f "$legacy"; fi
-  done
-  cat > "$dropin" <<EOF2
-# Managed by vps-init. Stage 1: enable direct root public-key login for the
-# supplied key, but do not yet disable global PasswordAuthentication /
-# KbdInteractiveAuthentication until a second SSH session is verified.
+capture_ssh_baseline() {
+  # Read the provider/current policy without our managed drop-in. We only move
+  # the file on disk while evaluating sshd -T; the running daemon is untouched.
+  local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf tmp effective
+  tmp="$(mktemp)"
+  if [[ -f "$dropin" ]]; then
+    cp -a "$dropin" "$tmp"
+    rm -f "$dropin"
+    effective="$(sshd -T 2>/dev/null || true)"
+    install -m 600 "$tmp" "$dropin"
+  else
+    effective="$(sshd -T 2>/dev/null || true)"
+  fi
+  rm -f "$tmp"
+  [[ -n "$effective" ]] || die "无法读取 SSH 基线配置；不会修改 sshd。"
+
+  SSH_BASE_PERMIT_ROOT="$(awk '$1=="permitrootlogin"{print $2; exit}' <<<"$effective")"
+  SSH_BASE_PASSWORD_AUTH="$(awk '$1=="passwordauthentication"{print $2; exit}' <<<"$effective")"
+  SSH_BASE_KBD_AUTH="$(awk '$1=="kbdinteractiveauthentication"{print $2; exit}' <<<"$effective")"
+  SSH_BASE_PERMIT_ROOT="${SSH_BASE_PERMIT_ROOT:-prohibit-password}"
+  SSH_BASE_PASSWORD_AUTH="${SSH_BASE_PASSWORD_AUTH:-no}"
+  SSH_BASE_KBD_AUTH="${SSH_BASE_KBD_AUTH:-no}"
+
+  case "$SSH_BASE_PERMIT_ROOT" in
+    yes) SSH_STAGE_PERMIT_ROOT=yes ;;
+    *) SSH_STAGE_PERMIT_ROOT=prohibit-password ;;
+  esac
+}
+
+verify_ssh_stage_policy() {
+  local effective
+  effective="$(sshd -T)"
+  grep -qi '^pubkeyauthentication yes$' <<<"$effective" || die "Stage 1 未成功启用 PubkeyAuthentication。"
+  grep -qi "^permitrootlogin ${SSH_STAGE_PERMIT_ROOT}$" <<<"$effective" ||
+    die "Stage 1 未保持预期的 PermitRootLogin=${SSH_STAGE_PERMIT_ROOT}。"
+  grep -qi "^passwordauthentication ${SSH_BASE_PASSWORD_AUTH}$" <<<"$effective" ||
+    die "Stage 1 改变了原有 PasswordAuthentication；已停止。"
+  grep -qi "^kbdinteractiveauthentication ${SSH_BASE_KBD_AUTH}$" <<<"$effective" ||
+    die "Stage 1 改变了原有 KbdInteractiveAuthentication；已停止。"
+}
+
+render_ssh_stage_config() {
+  cat <<EOF2
+# Managed by vps-init. Stage 1: add root public-key access while preserving the
+# pre-existing authentication policy until a second SSH session is verified.
 Port ${SSH_PORT}
-PermitRootLogin prohibit-password
+PermitRootLogin ${SSH_STAGE_PERMIT_ROOT}
 PubkeyAuthentication yes
+PasswordAuthentication ${SSH_BASE_PASSWORD_AUTH}
+KbdInteractiveAuthentication ${SSH_BASE_KBD_AUTH}
 EOF2
+}
+
+write_ssh_stage_config() {
+  local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf
+  backup_file "$dropin"
+  render_ssh_stage_config > "$dropin"
   reload_ssh_runtime
   verify_ssh_listener
-  verify_root_key_policy
+  verify_ssh_stage_policy
 }
 
 write_ssh_final_config() {
-  local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf
+  local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf legacy
+  for legacy in /etc/ssh/sshd_config.d/00-vps-init.conf /etc/ssh/sshd_config.d/99-vps-init.conf; do
+    if [[ -f "$legacy" ]]; then backup_file "$legacy"; rm -f "$legacy"; fi
+  done
   cat > "$dropin" <<EOF2
 # Managed by vps-init. Final key-only root SSH baseline.
 Port ${SSH_PORT}
@@ -78,6 +122,61 @@ EOF2
   local effective
   effective="$(sshd -T)"
   grep -qi '^passwordauthentication no$' <<<"$effective" || die "PasswordAuthentication 未成功关闭。"
+}
+
+arm_ssh_stage_rollback() {
+  local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf dir script previous unit
+  dir="${BACKUP_DIR}/ssh-stage-rollback"
+  mkdir -p "$dir"
+  previous="$dir/00-00-vps-init.conf.previous"
+  script="$dir/rollback.sh"
+  SSH_ROLLBACK_MARKER="$dir/fired"
+  unit="vps-init-ssh-rollback-$(date +%s)-$"
+  SSH_ROLLBACK_UNIT="$unit"
+
+  if [[ -f "$dropin" ]] && ! { grep -q 'Managed by vps-init. Stage 1' "$dropin" && ! is_true "${SSH_KEY_VERIFIED:-false}"; }; then
+    cp -a "$dropin" "$previous"
+    printf 'present\n' > "$dir/mode"
+  else
+    rm -f "$previous"
+    printf 'absent\n' > "$dir/mode"
+  fi
+
+  cat > "$script" <<EOF2
+#!/usr/bin/env bash
+set -Eeuo pipefail
+dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf
+if [[ "\$(cat "$dir/mode")" == present ]]; then
+  install -m 600 "$previous" "\$dropin"
+else
+  rm -f "\$dropin"
+fi
+sshd -t
+if systemctl cat ssh.socket >/dev/null 2>&1 &&
+   { systemctl is-active --quiet ssh.socket 2>/dev/null || systemctl is-enabled --quiet ssh.socket 2>/dev/null; }; then
+  systemctl daemon-reload
+  systemctl restart ssh.socket
+  systemctl reload ssh.service 2>/dev/null || true
+else
+  systemctl reload ssh.service 2>/dev/null || systemctl reload sshd.service
+fi
+touch "$SSH_ROLLBACK_MARKER"
+EOF2
+  chmod 700 "$script"
+  systemd-run --quiet --unit="$unit" --on-active=10m /bin/bash "$script" >/dev/null ||
+    die "无法创建 SSH 10 分钟自动回滚任务；为避免锁机，不继续修改 SSH。"
+  log_warn "SSH Stage 1 已启用 10 分钟自动回滚保护；验证成功后会自动取消。"
+}
+
+cancel_ssh_stage_rollback() {
+  [[ -n "${SSH_ROLLBACK_UNIT:-}" ]] || return 0
+  systemctl stop "${SSH_ROLLBACK_UNIT}.timer" >/dev/null 2>&1 || true
+  systemctl stop "${SSH_ROLLBACK_UNIT}.service" >/dev/null 2>&1 || true
+  systemctl reset-failed "${SSH_ROLLBACK_UNIT}.service" >/dev/null 2>&1 || true
+}
+
+ssh_stage_rollback_fired() {
+  [[ -n "${SSH_ROLLBACK_MARKER:-}" && -e "$SSH_ROLLBACK_MARKER" ]]
 }
 
 show_netcatty_identity_hint() {
@@ -145,12 +244,15 @@ EOF2
     log_warn "SSH 密钥此前已验证，但端口从 ${SSH_VERIFIED_PORT:-未知} 变为 ${SSH_PORT}；必须重新做第二终端登录验证。"
   fi
 
-  # Stage 1 explicitly enables direct root key login so provider/cloud images
-  # with PermitRootLogin no or PubkeyAuthentication no can be migrated safely.
-  # The current session must remain open until the second-session test passes.
+  # Preserve the provider/current authentication policy until the second
+  # session proves that the new key works. A transient systemd timer rolls
+  # Stage 1 back automatically if verification never completes.
+  capture_ssh_baseline
+  arm_ssh_stage_rollback
   write_ssh_stage_config
 
-  log_warn "公钥已安装，并已启用 root 公钥登录；当前会话不要关闭。全局 PasswordAuthentication/KbdInteractive 尚未由项目关闭。"
+  log_warn "公钥已安装，并已启用 root 公钥登录；当前会话不要关闭。验证前会保留原有 PasswordAuthentication/KbdInteractiveAuthentication 策略。"
+  log_warn "如果当前会话意外中断，Stage 1 会在 10 分钟后自动恢复到修改前的 SSH 配置。"
   if [[ -t 0 ]]; then
     local verify_choice=""
     while true; do
@@ -171,7 +273,15 @@ EOF2
       echo "  Ctrl+C                       → 主动中止本次部署"
       read -r -p "请选择 [1-3]: " verify_choice
       case "$verify_choice" in
-        1) break ;;
+        1)
+          if ssh_stage_rollback_fired; then
+            log_warn "10 分钟自动回滚已经执行；重新进入 Stage 1 后请再测试一次新 SSH 会话。"
+            arm_ssh_stage_rollback
+            write_ssh_stage_config
+            continue
+          fi
+          break
+          ;;
         2)
           echo "好的，当前会话和密码登录策略都保持不变。请在另一个窗口继续测试；这里不会退出部署。"
           ;;
@@ -188,6 +298,7 @@ EOF2
   fi
 
   write_ssh_final_config
+  cancel_ssh_stage_rollback
   state_set SSH_KEY_VERIFIED true
   state_set SSH_VERIFIED_PORT "$SSH_PORT"
   log_ok "SSH 密钥登录与端口 ${SSH_PORT} 已验证，root 密码/键盘交互登录已关闭。"

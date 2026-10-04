@@ -1,5 +1,19 @@
 # Release Notes
 
+## v1.3.6
+
+- 稳定性优先版本：修复代码审查发现的重跑、失败恢复和已有配置保护问题，本版本不新增应用功能。
+- SSH 真正改为两阶段：Stage 1 保留部署前有效的 PasswordAuthentication / KbdInteractiveAuthentication，只额外启用 root 公钥；第二终端确认密钥登录成功后才切换为 key-only。
+- SSH Stage 1 增加 10 分钟 systemd 自动回滚保护；若当前会话意外断开或验证未完成，会恢复修改前的 vps-init SSH drop-in。验证成功后自动取消回滚任务。
+- Lucky 反代重跑不再丢用户配置：保留用户自行添加的 ProxyList、Basic Auth、WAF 和其他可调字段，只替换 vps-init 自己负责的 lucky-admin / 3x-ui-panel / subscription 子规则；写入失败时尝试恢复原规则。
+- Docker daemon.json 改为 JSON 合并：保留 data-root、registry-mirrors、网络、runtime 等已有字段；用户选择非 json-file 日志驱动时不强行覆盖。写入前执行 dockerd --validate，Docker 重启失败会尝试恢复原配置。
+- 项目版本变量改为 VPSINIT_VERSION，避免 /etc/os-release 的 VERSION 污染部署版本记录。
+- Cloudflare Token 不再因一次验证失败删除旧凭据。网络超时、429、5xx 会保留旧 Token 并停止；新 Token 只有验证成功后才原子替换旧文件。
+- Lucky 证书同步改为“先校验证书/私钥匹配 -> 上传并确认新证书 -> 再删除旧证书”，避免新文件异常时先删掉可用证书。
+- Reality Only 的 IP 证书复用增加 SAN 当前 IP 与证书/私钥匹配检查；VPS 换 IP 后不会继续复用旧 IP 证书。
+- 普通 vps-init apply 不再执行 apt-get -y upgrade；仅确保依赖包可用。完整系统升级拆为 vps-init upgrade-system 和主菜单独立操作。
+- 新增行为测试：连续 Lucky 配置保留用户反代、Lucky 更新失败恢复原规则、Docker 配置合并、Cloudflare API 故障保留旧 Token、IP SAN/密钥匹配、SSH Stage 1 认证策略保留、普通 apply 不执行 full upgrade。
+
 ## v1.3.5
 
 - Lucky Profile 默认设置后台“安全入口”为 `zhg`，使用 Lucky 官方 `SetSafeURL` 配置项；部署完成后会读取 `BaseConfigure.SafeURL` 再次校验。

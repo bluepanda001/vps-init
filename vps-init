@@ -30,13 +30,13 @@ source "$ROOT_DIR/optional/cf-preferred/apply.sh"
 source "$ROOT_DIR/optional/cloudflaresub/apply.sh"
 source "$ROOT_DIR/verify/verify.sh"
 
-VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION" 2>/dev/null || printf unknown)"
+VPSINIT_VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION" 2>/dev/null || printf unknown)"
 DEFAULT_CFG="$PERSIST_DIR/config.env"
 [[ -f "$DEFAULT_CFG" ]] || DEFAULT_CFG="$ROOT_DIR/config.env"
 
 usage() {
   cat <<TXT
-VPS Init ${VERSION}
+VPS Init ${VPSINIT_VERSION}
 用途：用于 VPS 自动化初始化、配置与验收。
 
 用法：
@@ -54,6 +54,7 @@ VPS Init ${VERSION}
   vps-init gateway              # 查看当前 Web Gateway / Lucky 管理入口
   vps-init reinstall            # 单独进入系统重装 / 一键 DD
   vps-init update
+  vps-init upgrade-system        # 手动执行完整 apt upgrade
   vps-init logs
 TXT
 }
@@ -125,7 +126,7 @@ prepare_profile_transition() {
 show_status_summary() {
   local cfg="$1"
   load_runtime_config "$cfg"
-  echo "VPS Init ${VERSION}"
+  echo "VPS Init ${VPSINIT_VERSION}"
   echo "Profile           : $PROFILE"
   echo "Server            : ${SERVER_NAME:-}"
   echo "IPv4              : ${SERVER_IP:-未部署/未知}"
@@ -153,7 +154,7 @@ show_info_summary() {
   echo "============================================================"
   echo "                 VPS Init 部署信息"
   echo "============================================================"
-  echo "VPS Init           : $VERSION"
+  echo "VPS Init           : $VPSINIT_VERSION"
   echo "Deployed Version   : ${DEPLOYED_VERSION:-未记录}"
   echo "Profile            : $PROFILE"
   echo "Server             : ${SERVER_NAME:-}"
@@ -444,10 +445,11 @@ menu() {
  10. 查看服务日志
  11. 重新运行核心安装向导
  12. 系统重装 / 一键 DD
+ 13. 系统完整升级（apt upgrade）
   0. 退出
 TXT
     local n
-    read -r -p "请选择 [0-12]: " n
+    read -r -p "请选择 [0-13]: " n
     case "$n" in
       1)
         if [[ -f "$DEFAULT_CFG" ]]; then
@@ -481,6 +483,7 @@ TXT
         (( wizard_rc == 42 )) && exit 0
         ;;
       12) "$ROOT_DIR/vps-init" reinstall; exit 0 ;;
+      13) core_system_upgrade || true ;;
       0) exit 0 ;;
       *) echo "输入无效。" ;;
     esac
@@ -509,6 +512,7 @@ case "$cmd" in
   gateway) require_root; show_gateway_summary "$DEFAULT_CFG"; exit 0 ;;
   logs) require_root; show_logs; exit 0 ;;
   update) require_root; update_self; exit 0 ;;
+  upgrade-system) require_root; core_system_upgrade; exit 0 ;;
   status) require_root; show_status_summary "$cfg"; exit 0 ;;
   info) require_root; show_info_summary "$cfg"; exit 0 ;;
   apply|verify|preflight) ;;
@@ -568,7 +572,7 @@ chmod 600 "$SECRETS_FILE" 2>/dev/null || true
 if verify_all; then
   persist_config "$cfg"
   state_set DEPLOYED_PROFILE "$PROFILE"
-  state_set DEPLOYED_VERSION "$VERSION"
+  state_set DEPLOYED_VERSION "$VPSINIT_VERSION"
   state_set DEPLOYMENT_VERIFIED_AT "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   log_ok "全部阶段完成；Profile 已在验收通过后写入部署状态。"
 else
