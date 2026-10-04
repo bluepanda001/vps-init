@@ -28,8 +28,8 @@ core_preflight() {
   DEFAULT_INTERFACE="$detected_if"
   [[ -n "$SERVER_IP" ]] || die "无法确定 IPv4。"
   [[ -n "$DEFAULT_INTERFACE" ]] || die "无法确定默认网卡。"
-  if profile_has_xui && is_private_ipv4 "$SERVER_IP"; then
-    die "检测到的 IPv4 ${SERVER_IP} 不是公网地址。Reality/公网订阅 Profile 需要可从互联网访问的公网 IPv4。"
+  if profile_has_domain && is_private_ipv4 "$SERVER_IP"; then
+    die "检测到的 IPv4 ${SERVER_IP} 不是公网地址。域名 Web Gateway / Reality Profile 需要可从互联网访问的公网 IPv4。"
   fi
 
   log_info "系统: ${PRETTY_NAME}"
