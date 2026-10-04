@@ -96,6 +96,10 @@ prepare_profile_transition() {
         systemctl stop x-ui >/dev/null 2>&1 || true
       fi
       ;;
+    lucky-web)
+      systemctl disable --now nginx >/dev/null 2>&1 || true
+      systemctl disable --now x-ui >/dev/null 2>&1 || true
+      ;;
     reality-only)
       systemctl disable --now nginx >/dev/null 2>&1 || true
       systemctl disable --now lucky >/dev/null 2>&1 || true
@@ -161,7 +165,7 @@ show_info_summary() {
   if [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]]; then
     printf '  %-18s %s\n' "Nginx Stream" "$(systemctl is-active nginx 2>/dev/null || echo inactive)"
   fi
-  if [[ "$PROFILE" == "lucky-reality" ]]; then
+  if profile_has_lucky; then
     printf '  %-18s %s\n' "Lucky" "$(systemctl is-active lucky 2>/dev/null || echo inactive)"
   fi
   if is_true "${ENABLE_DOCKER:-false}"; then
@@ -265,11 +269,12 @@ show_secrets_pretty() {
   secret_block "SSH 隧道命令" XUI_PANEL_SSH_TUNNEL
   echo
 
-  if [[ "$deployed" == "lucky-reality" ]]; then
+  if [[ "$deployed" == "lucky-reality" || "$deployed" == "lucky-web" ]]; then
     echo "【二、Lucky 面板】"
     secret_line "用户名" LUCKY_USERNAME
     secret_line "密码" LUCKY_PASSWORD
     secret_line "本地地址" LUCKY_LOCAL_URL
+    secret_line "公网管理地址" LUCKY_PUBLIC_URL
     secret_block "SSH 隧道命令" LUCKY_PANEL_SSH_TUNNEL
     echo
   fi
@@ -312,6 +317,16 @@ show_gateway_summary() {
   echo "                 Web Gateway / 反向代理"
   echo "============================================================"
   case "$PROFILE" in
+    lucky-web)
+      echo "当前 Gateway： Lucky Web Only（无节点）"
+      echo "服务状态：     $(systemctl is-active lucky 2>/dev/null || echo inactive)"
+      echo "公网 HTTPS：   Lucky 直接监听 :443"
+      echo "管理域名：     https://${LUCKY_DOMAIN}"
+      echo "Docker：       $(systemctl is-active docker 2>/dev/null || echo inactive)"
+      echo "节点组件：     未安装 3x-ui / Xray / Reality / Subscription"
+      echo
+      echo "以后自行安装 Docker 服务后，直接在 Lucky Web 服务里添加域名反代。"
+      ;;
     lucky-reality)
       echo "当前 Gateway： Lucky（推荐）"
       echo "服务状态：     $(systemctl is-active lucky 2>/dev/null || echo inactive)"
@@ -359,7 +374,7 @@ show_logs() {
     systemctl status nginx --no-pager 2>/dev/null || true
     journalctl -u nginx -n 80 --no-pager 2>/dev/null || true
   fi
-  if [[ "${DEPLOYED_PROFILE:-}" == "lucky-reality" ]]; then
+  if [[ "${DEPLOYED_PROFILE:-}" == "lucky-reality" || "${DEPLOYED_PROFILE:-}" == "lucky-web" ]]; then
     echo "===== lucky ====="
     systemctl status lucky --no-pager 2>/dev/null || true
     journalctl -u lucky -n 80 --no-pager 2>/dev/null || true
@@ -497,7 +512,11 @@ optional_docker
 optional_cf_preferred
 optional_cloudflaresub
 
-if profile_has_xui; then
+if [[ "$PROFILE" == "lucky-web" ]]; then
+  module_cloudflare
+  module_certbot_domain
+  module_lucky
+elif profile_has_xui; then
   module_xui
   if profile_has_domain; then
     module_cloudflare
