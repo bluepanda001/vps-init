@@ -277,7 +277,13 @@ profile_has_lucky
 ! profile_has_xui
 '''
 
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.3.1" ]]
+grep -q 'SSH 密钥验证：' core/ssh.sh
+grep -q '还没测试 / 测试失败' core/ssh.sh
+grep -q '不会退出当前部署' core/ssh.sh
+if grep -q '尚未确认密钥登录。当前会话不要关闭；确认后重新运行即可' core/ssh.sh; then
+  echo 'FAIL: SSH verification must retry in place instead of aborting the wizard' >&2; exit 1
+fi
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.3.2" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
