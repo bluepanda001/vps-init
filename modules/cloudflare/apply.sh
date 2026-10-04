@@ -2,9 +2,9 @@
 module_cloudflare() {
   profile_has_domain || return 0
   [[ "$DNS_PROVIDER" == "cloudflare" ]] || die "仅支持 Cloudflare。"
-  mkdir -p /root/.secrets
-  chmod 700 /root/.secrets
-  local token_file=/root/.secrets/cloudflare.ini
+  local token_file="${VPSINIT_CLOUDFLARE_TOKEN_FILE:-/root/.secrets/cloudflare.ini}"
+  mkdir -p "$(dirname "$token_file")"
+  chmod 700 "$(dirname "$token_file")"
 
   # Validate against the actual target zone instead of /user/tokens/verify.
   # This works for both user-owned (cfut_) and account-owned (cfat_) tokens.
@@ -69,7 +69,7 @@ EOF2
       python3 "$ROOT_DIR/modules/cloudflare/cloudflare.py" verify --zone "$ROOT_DOMAIN" >/dev/null 2>&1; then
       umask 077
       local token_tmp
-      token_tmp="$(mktemp /root/.secrets/cloudflare.ini.new.XXXXXX)"
+      token_tmp="$(mktemp "$(dirname "$token_file")/.cloudflare.ini.new.XXXXXX")"
       printf 'dns_cloudflare_api_token = %s\n' "$cf_token" > "$token_tmp"
       chmod 600 "$token_tmp"
       mv -f "$token_tmp" "$token_file"
