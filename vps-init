@@ -174,6 +174,17 @@ show_info_summary() {
     printf '  %-18s %s\n' "Docker" "未启用"
   fi
 
+  if [[ "$PROFILE" == "lucky-web" ]]; then
+    echo
+    echo "Lucky Web Only："
+    echo "  Public 443        : Lucky direct HTTPS"
+    echo "  Lucky Domain      : https://${LUCKY_DOMAIN}"
+    echo "  Lucky Local UI    : http://127.0.0.1:16601"
+    echo "  Lucky SSH Tunnel  : ssh -L 16601:127.0.0.1:16601 -p ${SSH_PORT} root@${SERVER_IP}"
+    echo "  Wildcard TLS      : ${ROOT_DOMAIN} + *.${ROOT_DOMAIN}"
+    echo "  Node Components   : none"
+  fi
+
   if profile_has_xui; then
     echo
     echo "3x-ui / Reality："
@@ -261,13 +272,15 @@ show_secrets_pretty() {
   echo "提示              : 本页含密码、Token 和节点参数，请勿公开分享。"
   echo
 
-  echo "【一、3x-ui 面板】"
-  secret_line "用户名" XUI_USERNAME
-  secret_line "密码" XUI_PASSWORD
-  secret_line "公网地址" XUI_PUBLIC_URL
-  secret_line "本地地址" XUI_PANEL_LOCAL_URL
-  secret_block "SSH 隧道命令" XUI_PANEL_SSH_TUNNEL
-  echo
+  if [[ "$deployed" != "base-only" && "$deployed" != "lucky-web" ]]; then
+    echo "【一、3x-ui 面板】"
+    secret_line "用户名" XUI_USERNAME
+    secret_line "密码" XUI_PASSWORD
+    secret_line "公网地址" XUI_PUBLIC_URL
+    secret_line "本地地址" XUI_PANEL_LOCAL_URL
+    secret_block "SSH 隧道命令" XUI_PANEL_SSH_TUNNEL
+    echo
+  fi
 
   if [[ "$deployed" == "lucky-reality" || "$deployed" == "lucky-web" ]]; then
     echo "【二、Lucky 面板】"
@@ -279,20 +292,22 @@ show_secrets_pretty() {
     echo
   fi
 
-  echo "【三、订阅地址】"
-  secret_block "标准订阅" SUBSCRIPTION_URL
-  secret_block "Clash / Mihomo" SUBSCRIPTION_CLASH_URL
-  secret_block "Mihomo 明确端点" SUBSCRIPTION_MIHOMO_URL
-  echo
+  if [[ "$deployed" != "base-only" && "$deployed" != "lucky-web" ]]; then
+    echo "【三、订阅地址】"
+    secret_block "标准订阅" SUBSCRIPTION_URL
+    secret_block "Clash / Mihomo" SUBSCRIPTION_CLASH_URL
+    secret_block "Mihomo 明确端点" SUBSCRIPTION_MIHOMO_URL
+    echo
 
-  echo "【四、Reality 节点】"
-  secret_line "Target" REALITY_TARGET
-  secret_line "回落限速" REALITY_FALLBACK_LIMIT
-  secret_line "UUID" REALITY_UUID
-  secret_line "Public Key" REALITY_PUBLIC_KEY
-  secret_line "Short ID" REALITY_SHORT_ID
-  secret_block "分享链接" REALITY_SHARE_LINK
-  echo
+    echo "【四、Reality 节点】"
+    secret_line "Target" REALITY_TARGET
+    secret_line "回落限速" REALITY_FALLBACK_LIMIT
+    secret_line "UUID" REALITY_UUID
+    secret_line "Public Key" REALITY_PUBLIC_KEY
+    secret_line "Short ID" REALITY_SHORT_ID
+    secret_block "分享链接" REALITY_SHARE_LINK
+    echo
+  fi
 
   if [[ -n "$(secret_value CF_WS_DOMAIN)" || -n "$(secret_value CF_WS_SHARE_LINK)" ]]; then
     echo "【五、Cloudflare CDN WS 节点】"
