@@ -1,5 +1,12 @@
 # Release Notes
 
+## v1.3.4
+
+- 修复全新安装 Lucky 时凭据初始化失败：新安装先尝试 Lucky 官方默认账号 `666/666`，成功后立即通过本地 API 轮换为部署向导中设置的用户名/密码。
+- 不再把 `-rResetUser` 当作全新安装的常规路径；官方运行时重置仅作为“已有 Lucky 且当前凭据未知”的最后恢复手段。
+- 运行时重置增加短暂重试和更明确的错误提示；即使恢复通道不可用，也明确提示无需 DD / 重装系统，只需修复 Lucky 后重跑部署。
+- 保留最终凭据验证：轮换后必须用项目管理账号成功调用 Lucky API 才继续证书同步和 Web Gateway 配置。
+
 ## v1.3.3
 
 - Cloudflare Token 输入步骤现在直接显示可点击/复制的 API Token 创建地址：`https://dash.cloudflare.com/profile/api-tokens`。
