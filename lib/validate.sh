@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 validate_config() {
-  case "$PROFILE" in base-only|reality-only|nginx-reality|lucky-reality) ;; *) die "PROFILE 无效: $PROFILE" ;; esac
+  case "$PROFILE" in base-only|lucky-web|reality-only|nginx-reality|lucky-reality) ;; *) die "PROFILE 无效: $PROFILE" ;; esac
   [[ "$SSH_PORT" =~ ^[0-9]+$ ]] && ((SSH_PORT>=1 && SSH_PORT<=65535)) || die "SSH_PORT 无效。"
 
   if profile_has_domain; then
