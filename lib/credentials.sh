@@ -127,7 +127,11 @@ credential_menu() {
     echo "============================================================"
     echo "                  管理账号 / 密码"
     echo "============================================================"
-    echo "  1. 修改 / 重置 3x-ui 用户名和密码"
+    if [[ -x /usr/local/x-ui/x-ui ]]; then
+      echo "  1. 修改 / 重置 3x-ui 用户名和密码"
+    else
+      echo "  1. 3x-ui（未安装）"
+    fi
     if [[ -x /opt/lucky/lucky ]]; then
       echo "  2. 修改 / 重置 Lucky 用户名和密码"
     else
@@ -136,7 +140,10 @@ credential_menu() {
     echo "  0. 返回"
     read -r -p "请选择 [0-2]: " choice
     case "$choice" in
-      1) credential_change_xui ;;
+      1)
+        [[ -x /usr/local/x-ui/x-ui ]] || { echo "3x-ui 未安装。"; continue; }
+        credential_change_xui
+        ;;
       2)
         [[ -x /opt/lucky/lucky ]] || { echo "Lucky 未安装。"; continue; }
         credential_change_lucky
