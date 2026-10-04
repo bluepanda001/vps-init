@@ -130,6 +130,11 @@ show_status_summary() {
   echo "Server            : ${SERVER_NAME:-}"
   echo "IPv4              : ${SERVER_IP:-未部署/未知}"
   echo "SSH Port          : $SSH_PORT"
+  if [[ "$PROFILE" == "lucky-web" ]]; then
+    echo "Lucky Domain       : https://${LUCKY_DOMAIN}"
+    echo "Web Gateway        : Lucky direct :443"
+    echo "Docker             : ${ENABLE_DOCKER}"
+  fi
   if profile_has_xui; then
     echo "3x-ui Panel Path  : ${XUI_WEB_BASE_PATH:-${XUI_PANEL_URI_PATH:-/zhg/}}"
     echo "Subscription Path : ${SUBSCRIPTION_PATH:-${XUI_SUB_URI_PATH:-/zhg/}}"
@@ -235,7 +240,7 @@ show_info_summary() {
   echo "  Report             : $REPORT_FILE"
   echo "  Secrets            : $SECRETS_FILE"
   echo
-  echo "敏感内容默认不显示。完整订阅 URL、3x-ui 密码和 Reality 分享链接请运行："
+  echo "敏感内容默认不显示。管理账号、密码、订阅/节点参数等请运行："
   echo "  vps-init secrets"
   echo "============================================================"
 }
@@ -283,7 +288,7 @@ show_secrets_pretty() {
   fi
 
   if [[ "$deployed" == "lucky-reality" || "$deployed" == "lucky-web" ]]; then
-    echo "【二、Lucky 面板】"
+    if [[ "$deployed" == "lucky-web" ]]; then echo "【一、Lucky 面板】"; else echo "【二、Lucky 面板】"; fi
     secret_line "用户名" LUCKY_USERNAME
     secret_line "密码" LUCKY_PASSWORD
     secret_line "本地地址" LUCKY_LOCAL_URL
