@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.3.5 默认把 Lucky 后台安全入口设置为 `zhg`，并把这个路径纳入部署信息、Gateway、Secrets 和验收；Lucky Web Only 仍保持“Base + Docker + Lucky + 域名/SSL，无节点”的定位。
+V1.3.6 是稳定性版本：优先修复 SSH 防锁机、Lucky 重跑保护、Docker 配置合并、Cloudflare Token/证书事务安全和 IP 证书身份校验；普通 `apply` 不再顺带执行完整系统升级。
 
 ## 一键安装
 
@@ -58,6 +58,24 @@ DD 完成重新 SSH 登录后，再执行 VPS Init 一键命令，会直接进�
 ```
 
 快速安装只询问真正必要的信息；自定义安装才展开 URI Path、订阅端口、Reality Target、Docker 等参数。`Base Only` 仍然是纯基础初始化；如果完全不需要代理节点、只是想把 VPS 当 Docker/Web 服务器，则选 `Lucky Web Only`，Docker 默认开启，Lucky 用户名/密码可在部署阶段自定义。带 3x-ui 的 Profile 仍可自定义 3x-ui 管理凭据。所有密码输入均不回显。
+
+### 重跑与已有配置保护
+
+V1.3.6 起，普通 `vps-init apply` 以“尽量不破坏用户已有配置”为原则：
+
+- SSH 第二终端验证前保留原有认证策略，并启用 10 分钟自动回滚；
+- Lucky 只更新 vps-init 自己负责的子规则，用户自行添加的反代、Basic Auth、WAF 等保留；
+- Docker `daemon.json` 使用 JSON 合并，不整份覆盖已有 `data-root`、镜像源、网络和 runtime；
+- Cloudflare 旧 Token 在新 Token 验证成功前不会删除；
+- Lucky 新证书先验证并成功上传，再清理旧证书；
+- Reality Only 的旧 IP 证书必须同时匹配当前 IP 和私钥才会复用。
+
+普通 `apply` 只确保依赖包存在，不再执行完整系统升级。需要完整升级时手动运行：
+
+```bash
+vps-init upgrade-system
+```
+
 
 ## Profile
 
@@ -188,7 +206,7 @@ Nginx Stream ssl_preread
                     └─ node.<domain> -> Subscription
 ```
 
-这里不能依赖 REALITY 自己把普通 HTTPS 回落到 Lucky：REALITY 对未通过鉴权的连接会直接转发到它的 `target`，因此必须在 Xray 前面按 SNI 分流。Lucky 固定使用已校验的 `2.27.2` release；证书由 Cloudflare DNS-01 + Certbot 获取后同步进 Lucky。脚本使用 Lucky 官方运行时 `-rResetUser` 恢复默认管理凭据后，立即通过 loopback API 轮换为 vps-init 持久化的随机账号密码；不会解析或修改加密的 `*.lkcf` 凭据字段。
+这里不能依赖 REALITY 自己把普通 HTTPS 回落到 Lucky：REALITY 对未通过鉴权的连接会直接转发到它的 `target`，因此必须在 Xray 前面按 SNI 分流。Lucky 固定使用已校验的 `2.27.2` release；证书由 Cloudflare DNS-01 + Certbot 获取后同步进 Lucky。全新 Lucky 优先使用官方默认 `666/666` 完成首次本地登录，并立即通过 loopback API 轮换为 vps-init 持久化的管理账号；`-rResetUser` 仅作为旧安装凭据未知时的最后恢复手段。不会解析或修改加密的 `*.lkcf` 凭据字段。
 
 
 ### Lucky 作为默认 Web Gateway
