@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.3.6 是稳定性版本：优先修复 SSH 防锁机、Lucky 重跑保护、Docker 配置合并、Cloudflare Token/证书事务安全和 IP 证书身份校验；普通 `apply` 不再顺带执行完整系统升级。
+V1.3.7 修复 Lucky 证书重跑：已有同名备注的证书会直接复用，不再因为 `CertificateRemarkNameConflict` 中断部署。V1.3.6 仍是稳定性版本：优先修复 SSH 防锁机、Lucky 重跑保护、Docker 配置合并、Cloudflare Token/证书事务安全和 IP 证书身份校验；普通 `apply` 不再顺带执行完整系统升级。
 
 ## 一键安装
 
