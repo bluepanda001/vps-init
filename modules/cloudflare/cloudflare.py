@@ -2,7 +2,7 @@
 from __future__ import annotations
 import argparse,json,os,re,sys,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
-TOKEN_FILE=Path('/root/.secrets/cloudflare.ini')
+TOKEN_FILE=Path(os.environ.get('VPSINIT_CLOUDFLARE_TOKEN_FILE','/root/.secrets/cloudflare.ini'))
 API='https://api.cloudflare.com/client/v4'
 
 class CloudflareAuthError(RuntimeError):
