@@ -271,6 +271,14 @@ verify_all() {
     if [[ "$PROFILE" == lucky-reality ]]; then
       check "Lucky active" systemctl is-active --quiet lucky
       check "Lucky HTTPS backend 8443 listening" bash -c "ss -H -ltn 'sport = :8443' | grep . >/dev/null"
+    elif [[ "$PROFILE" == lucky-web ]]; then
+      check "Wildcard certificate valid >7d" openssl x509 -checkend 604800 -noout -in "$DOMAIN_CERT_FILE"
+      check "Lucky active" systemctl is-active --quiet lucky
+      check "Lucky owns public 443" bash -c "ss -H -ltnp 'sport = :443' | grep -i lucky >/dev/null"
+      check "Lucky local admin API" curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:16601/version"
+      check "Lucky public admin domain HTTPS" curl -fsS --max-time 10 --resolve "${LUCKY_DOMAIN}:443:127.0.0.1" -o /dev/null "https://${LUCKY_DOMAIN}/"
+      check "3x-ui not active" bash -c "! systemctl is-active --quiet x-ui 2>/dev/null"
+      check "Nginx not active" bash -c "! systemctl is-active --quiet nginx 2>/dev/null"
     fi
     if is_true "$ENABLE_DOCKER"; then check "Docker active" systemctl is-active --quiet docker; fi
     echo

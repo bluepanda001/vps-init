@@ -28,8 +28,8 @@ core_preflight() {
   DEFAULT_INTERFACE="$detected_if"
   [[ -n "$SERVER_IP" ]] || die "无法确定 IPv4。"
   [[ -n "$DEFAULT_INTERFACE" ]] || die "无法确定默认网卡。"
-  if profile_has_xui && is_private_ipv4 "$SERVER_IP"; then
-    die "检测到的 IPv4 ${SERVER_IP} 不是公网地址。Reality/公网订阅 Profile 需要可从互联网访问的公网 IPv4。"
+  if profile_has_domain && is_private_ipv4 "$SERVER_IP"; then
+    die "检测到的 IPv4 ${SERVER_IP} 不是公网地址。域名 Web Gateway / Reality Profile 需要可从互联网访问的公网 IPv4。"
   fi
 
   log_info "系统: ${PRETTY_NAME}"
@@ -51,13 +51,16 @@ core_preflight() {
   if [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]] && port_in_use 443 && ! systemctl is-active --quiet nginx 2>/dev/null; then
     die "443 已被非 Nginx 服务占用。为避免覆盖现有服务，已停止。"
   fi
+  if [[ "$PROFILE" == "lucky-web" ]] && port_in_use 443 && ! systemctl is-active --quiet lucky 2>/dev/null; then
+    die "443 已被其他服务占用。Lucky Web Only 需要直接监听公网 443。"
+  fi
 
   # Fresh-server safety: an existing stack not previously managed by vps-init needs explicit adoption.
   if [[ "$had_state" == false ]]; then
     local existing=()
     profile_has_xui && [[ -x /usr/local/x-ui/x-ui ]] && existing+=("3x-ui")
     [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]] && command_exists nginx && existing+=("nginx")
-    [[ "$PROFILE" == "lucky-reality" && -x /opt/lucky/lucky ]] && existing+=("Lucky")
+    [[ ( "$PROFILE" == "lucky-reality" || "$PROFILE" == "lucky-web" ) && -x /opt/lucky/lucky ]] && existing+=("Lucky")
     if (( ${#existing[@]} > 0 )); then
       log_warn "检测到并非由本项目 state 标记的已有组件：${existing[*]}"
       if ! confirm "允许 vps-init 接管这些组件并修改配置？" n; then

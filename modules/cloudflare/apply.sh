@@ -53,7 +53,13 @@ EOF2
     log_warn "Token 验证失败；请检查 Token、Zone 范围、Zone Read/DNS Write 权限后重新粘贴。"
   done
 
-  python3 "$ROOT_DIR/modules/cloudflare/cloudflare.py" upsert --zone "$ROOT_DOMAIN" --name "$PANEL_DOMAIN" --ip "$SERVER_IP" >/dev/null
-  python3 "$ROOT_DIR/modules/cloudflare/cloudflare.py" upsert --zone "$ROOT_DOMAIN" --name "$NODE_DOMAIN" --ip "$SERVER_IP" >/dev/null
-  log_ok "Cloudflare DNS 已写入（DNS only）：$PANEL_DOMAIN / $NODE_DOMAIN -> $SERVER_IP"
+  if [[ "$PROFILE" == "lucky-web" ]]; then
+    python3 "$ROOT_DIR/modules/cloudflare/cloudflare.py" upsert --zone "$ROOT_DOMAIN" --name "$LUCKY_DOMAIN" --ip "$SERVER_IP" >/dev/null
+    python3 "$ROOT_DIR/modules/cloudflare/cloudflare.py" upsert --zone "$ROOT_DOMAIN" --name "*.$ROOT_DOMAIN" --ip "$SERVER_IP" >/dev/null
+    log_ok "Cloudflare DNS 已写入（DNS only）：$LUCKY_DOMAIN / *.$ROOT_DOMAIN -> $SERVER_IP"
+  else
+    python3 "$ROOT_DIR/modules/cloudflare/cloudflare.py" upsert --zone "$ROOT_DOMAIN" --name "$PANEL_DOMAIN" --ip "$SERVER_IP" >/dev/null
+    python3 "$ROOT_DIR/modules/cloudflare/cloudflare.py" upsert --zone "$ROOT_DOMAIN" --name "$NODE_DOMAIN" --ip "$SERVER_IP" >/dev/null
+    log_ok "Cloudflare DNS 已写入（DNS only）：$PANEL_DOMAIN / $NODE_DOMAIN -> $SERVER_IP"
+  fi
 }

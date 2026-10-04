@@ -52,6 +52,7 @@ VPS Init ${VERSION}
   vps-init passwd               # 修改/重置并同步面板账号密码
   vps-init passwd xui|lucky
   vps-init gateway              # 查看当前 Web Gateway / Lucky 管理入口
+  vps-init reinstall            # 单独进入系统重装 / 一键 DD
   vps-init update
   vps-init logs
 TXT
@@ -95,6 +96,10 @@ prepare_profile_transition() {
         systemctl stop x-ui >/dev/null 2>&1 || true
       fi
       ;;
+    lucky-web)
+      systemctl disable --now nginx >/dev/null 2>&1 || true
+      systemctl disable --now x-ui >/dev/null 2>&1 || true
+      ;;
     reality-only)
       systemctl disable --now nginx >/dev/null 2>&1 || true
       systemctl disable --now lucky >/dev/null 2>&1 || true
@@ -125,6 +130,11 @@ show_status_summary() {
   echo "Server            : ${SERVER_NAME:-}"
   echo "IPv4              : ${SERVER_IP:-未部署/未知}"
   echo "SSH Port          : $SSH_PORT"
+  if [[ "$PROFILE" == "lucky-web" ]]; then
+    echo "Lucky Domain       : https://${LUCKY_DOMAIN}"
+    echo "Web Gateway        : Lucky direct :443"
+    echo "Docker             : ${ENABLE_DOCKER}"
+  fi
   if profile_has_xui; then
     echo "3x-ui Panel Path  : ${XUI_WEB_BASE_PATH:-${XUI_PANEL_URI_PATH:-/zhg/}}"
     echo "Subscription Path : ${SUBSCRIPTION_PATH:-${XUI_SUB_URI_PATH:-/zhg/}}"
@@ -160,13 +170,24 @@ show_info_summary() {
   if [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]]; then
     printf '  %-18s %s\n' "Nginx Stream" "$(systemctl is-active nginx 2>/dev/null || echo inactive)"
   fi
-  if [[ "$PROFILE" == "lucky-reality" ]]; then
+  if profile_has_lucky; then
     printf '  %-18s %s\n' "Lucky" "$(systemctl is-active lucky 2>/dev/null || echo inactive)"
   fi
   if is_true "${ENABLE_DOCKER:-false}"; then
     printf '  %-18s %s\n' "Docker" "$(systemctl is-active docker 2>/dev/null || echo inactive)"
   else
     printf '  %-18s %s\n' "Docker" "未启用"
+  fi
+
+  if [[ "$PROFILE" == "lucky-web" ]]; then
+    echo
+    echo "Lucky Web Only："
+    echo "  Public 443        : Lucky direct HTTPS"
+    echo "  Lucky Domain      : https://${LUCKY_DOMAIN}"
+    echo "  Lucky Local UI    : http://127.0.0.1:16601"
+    echo "  Lucky SSH Tunnel  : ssh -L 16601:127.0.0.1:16601 -p ${SSH_PORT} root@${SERVER_IP}"
+    echo "  Wildcard TLS      : ${ROOT_DOMAIN} + *.${ROOT_DOMAIN}"
+    echo "  Node Components   : none"
   fi
 
   if profile_has_xui; then
@@ -219,7 +240,7 @@ show_info_summary() {
   echo "  Report             : $REPORT_FILE"
   echo "  Secrets            : $SECRETS_FILE"
   echo
-  echo "敏感内容默认不显示。完整订阅 URL、3x-ui 密码和 Reality 分享链接请运行："
+  echo "敏感内容默认不显示。管理账号、密码、订阅/节点参数等请运行："
   echo "  vps-init secrets"
   echo "============================================================"
 }
@@ -256,37 +277,42 @@ show_secrets_pretty() {
   echo "提示              : 本页含密码、Token 和节点参数，请勿公开分享。"
   echo
 
-  echo "【一、3x-ui 面板】"
-  secret_line "用户名" XUI_USERNAME
-  secret_line "密码" XUI_PASSWORD
-  secret_line "公网地址" XUI_PUBLIC_URL
-  secret_line "本地地址" XUI_PANEL_LOCAL_URL
-  secret_block "SSH 隧道命令" XUI_PANEL_SSH_TUNNEL
-  echo
+  if [[ "$deployed" != "base-only" && "$deployed" != "lucky-web" ]]; then
+    echo "【一、3x-ui 面板】"
+    secret_line "用户名" XUI_USERNAME
+    secret_line "密码" XUI_PASSWORD
+    secret_line "公网地址" XUI_PUBLIC_URL
+    secret_line "本地地址" XUI_PANEL_LOCAL_URL
+    secret_block "SSH 隧道命令" XUI_PANEL_SSH_TUNNEL
+    echo
+  fi
 
-  if [[ "$deployed" == "lucky-reality" ]]; then
-    echo "【二、Lucky 面板】"
+  if [[ "$deployed" == "lucky-reality" || "$deployed" == "lucky-web" ]]; then
+    if [[ "$deployed" == "lucky-web" ]]; then echo "【一、Lucky 面板】"; else echo "【二、Lucky 面板】"; fi
     secret_line "用户名" LUCKY_USERNAME
     secret_line "密码" LUCKY_PASSWORD
     secret_line "本地地址" LUCKY_LOCAL_URL
+    secret_line "公网管理地址" LUCKY_PUBLIC_URL
     secret_block "SSH 隧道命令" LUCKY_PANEL_SSH_TUNNEL
     echo
   fi
 
-  echo "【三、订阅地址】"
-  secret_block "标准订阅" SUBSCRIPTION_URL
-  secret_block "Clash / Mihomo" SUBSCRIPTION_CLASH_URL
-  secret_block "Mihomo 明确端点" SUBSCRIPTION_MIHOMO_URL
-  echo
+  if [[ "$deployed" != "base-only" && "$deployed" != "lucky-web" ]]; then
+    echo "【三、订阅地址】"
+    secret_block "标准订阅" SUBSCRIPTION_URL
+    secret_block "Clash / Mihomo" SUBSCRIPTION_CLASH_URL
+    secret_block "Mihomo 明确端点" SUBSCRIPTION_MIHOMO_URL
+    echo
 
-  echo "【四、Reality 节点】"
-  secret_line "Target" REALITY_TARGET
-  secret_line "回落限速" REALITY_FALLBACK_LIMIT
-  secret_line "UUID" REALITY_UUID
-  secret_line "Public Key" REALITY_PUBLIC_KEY
-  secret_line "Short ID" REALITY_SHORT_ID
-  secret_block "分享链接" REALITY_SHARE_LINK
-  echo
+    echo "【四、Reality 节点】"
+    secret_line "Target" REALITY_TARGET
+    secret_line "回落限速" REALITY_FALLBACK_LIMIT
+    secret_line "UUID" REALITY_UUID
+    secret_line "Public Key" REALITY_PUBLIC_KEY
+    secret_line "Short ID" REALITY_SHORT_ID
+    secret_block "分享链接" REALITY_SHARE_LINK
+    echo
+  fi
 
   if [[ -n "$(secret_value CF_WS_DOMAIN)" || -n "$(secret_value CF_WS_SHARE_LINK)" ]]; then
     echo "【五、Cloudflare CDN WS 节点】"
@@ -311,6 +337,16 @@ show_gateway_summary() {
   echo "                 Web Gateway / 反向代理"
   echo "============================================================"
   case "$PROFILE" in
+    lucky-web)
+      echo "当前 Gateway： Lucky Web Only（无节点）"
+      echo "服务状态：     $(systemctl is-active lucky 2>/dev/null || echo inactive)"
+      echo "公网 HTTPS：   Lucky 直接监听 :443"
+      echo "管理域名：     https://${LUCKY_DOMAIN}"
+      echo "Docker：       $(systemctl is-active docker 2>/dev/null || echo inactive)"
+      echo "节点组件：     未安装 3x-ui / Xray / Reality / Subscription"
+      echo
+      echo "以后自行安装 Docker 服务后，直接在 Lucky Web 服务里添加域名反代。"
+      ;;
     lucky-reality)
       echo "当前 Gateway： Lucky（推荐）"
       echo "服务状态：     $(systemctl is-active lucky 2>/dev/null || echo inactive)"
@@ -358,7 +394,7 @@ show_logs() {
     systemctl status nginx --no-pager 2>/dev/null || true
     journalctl -u nginx -n 80 --no-pager 2>/dev/null || true
   fi
-  if [[ "${DEPLOYED_PROFILE:-}" == "lucky-reality" ]]; then
+  if [[ "${DEPLOYED_PROFILE:-}" == "lucky-reality" || "${DEPLOYED_PROFILE:-}" == "lucky-web" ]]; then
     echo "===== lucky ====="
     systemctl status lucky --no-pager 2>/dev/null || true
     journalctl -u lucky -n 80 --no-pager 2>/dev/null || true
@@ -401,10 +437,11 @@ menu() {
   9. 更新 VPS Init
  10. 查看服务日志
  11. 重新运行核心安装向导
+ 12. 系统重装 / 一键 DD
   0. 退出
 TXT
     local n
-    read -r -p "请选择 [0-11]: " n
+    read -r -p "请选择 [0-12]: " n
     case "$n" in
       1)
         if [[ -f "$DEFAULT_CFG" ]]; then
@@ -437,6 +474,7 @@ TXT
         "$ROOT_DIR/vps-init" wizard || wizard_rc=$?
         (( wizard_rc == 42 )) && exit 0
         ;;
+      12) "$ROOT_DIR/vps-init" reinstall; exit 0 ;;
       0) exit 0 ;;
       *) echo "输入无效。" ;;
     esac
@@ -461,6 +499,7 @@ case "$cmd" in
     exit 0
     ;;
   passwd) require_root; credential_command "${2:-}"; exit 0 ;;
+  reinstall) require_root; wizard_reinstall; exit 0 ;;
   gateway) require_root; show_gateway_summary "$DEFAULT_CFG"; exit 0 ;;
   logs) require_root; show_logs; exit 0 ;;
   update) require_root; update_self; exit 0 ;;
@@ -493,7 +532,11 @@ optional_docker
 optional_cf_preferred
 optional_cloudflaresub
 
-if profile_has_xui; then
+if [[ "$PROFILE" == "lucky-web" ]]; then
+  module_cloudflare
+  module_certbot_domain
+  module_lucky
+elif profile_has_xui; then
   module_xui
   if profile_has_domain; then
     module_cloudflare

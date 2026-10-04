@@ -5,11 +5,11 @@ cd "$ROOT_DIR"
 for f in vps-init $(find . -type f -name '*.sh' ! -path './verify/selftest.sh' | sort); do bash -n "$f"; done
 python3 -m py_compile modules/3x-ui/xui_api.py modules/cloudflare/cloudflare.py modules/lucky/lucky_api.py
 find modules -type d -name '__pycache__' -prune -exec rm -rf {} +
-for p in base-only reality-only nginx-reality lucky-reality; do
+for p in base-only lucky-web reality-only nginx-reality lucky-reality; do
   cfg=$(mktemp)
   cp config.env.example "$cfg"
   sed -i "s/^PROFILE=.*/PROFILE=\"$p\"/" "$cfg"
-  if [[ "$p" == nginx-reality || "$p" == lucky-reality ]]; then sed -i 's/^ROOT_DOMAIN=.*/ROOT_DOMAIN="example.com"/' "$cfg"; fi
+  if [[ "$p" == nginx-reality || "$p" == lucky-reality || "$p" == lucky-web ]]; then sed -i 's/^ROOT_DOMAIN=.*/ROOT_DOMAIN="example.com"/' "$cfg"; fi
   ROOT_DIR="$ROOT_DIR" bash -c 'set -Eeuo pipefail; source "$ROOT_DIR/lib/common.sh"; source "$ROOT_DIR/lib/validate.sh"; load_config "$1"; validate_config' _ "$cfg"
   rm -f "$cfg"
 done
@@ -157,7 +157,7 @@ if grep -q 'raw.githubusercontent.com/MHSanaei/3x-ui/v3.8.5/install.sh' modules/
 fi
 
 # V1.2.4: DD must be fully non-interactive for the target Linux username.
-grep -Fq 'cmd=(bash "$script" ubuntu 24.04 --minimal --user root)' lib/wizard.sh
+grep -Fq 'cmd=(bash "$script" ubuntu 24.04 --minimal --user root --ssh-port "$current_port")' lib/wizard.sh
 
 # V1.2.5: Lucky 2.27.2 uses encrypted/modular *.lkcf files. Bootstrap
 # must use the documented runtime reset and authenticated API rather than
@@ -239,18 +239,45 @@ s=Path("vps-init").read_text()
 assert s.index("module_nginx") < s.index("optional_cf_ws", s.index("if profile_has_xui"))
 PY_CFWS_ORDER
 
-# V1.3.0: Lucky is the recommended graphical Web Gateway.
-grep -q 'Lucky + Reality - 推荐：图形化 Web Gateway' lib/wizard.sh
+# V1.3.x: Lucky is the graphical Web Gateway; 1.3.1 also supports
+# a node-free Lucky Web Only profile and separates DD from normal setup.
+grep -q 'Lucky + Reality - 图形化 Web Gateway' lib/wizard.sh
+grep -q 'Lucky Web Only - Base + Docker + Lucky' lib/wizard.sh
+grep -q '服务器公钥位置：/root/.ssh/authorized_keys' lib/wizard.sh
 grep -q 'LUCKY_PANEL_SSH_TUNNEL' modules/lucky/apply.sh
+grep -q 'configure-web-only' modules/lucky/lucky_api.py
 grep -q 'vps-init gateway' vps-init
-grep -q '当前 Gateway： Lucky（推荐）' vps-init
-grep -q 'HTTPS Route       : 443 -> Lucky HTTPS 127.0.0.1:8443' vps-init
-grep -q 'Nginx Stream' vps-init
+grep -q 'vps-init reinstall' vps-init
+grep -q '当前 Gateway： Lucky Web Only（无节点）' vps-init
+grep -q 'Lucky owns public 443' verify/verify.sh
+grep -q 'lucky-web' core/firewall.sh
+grep -q 'profile_has_lucky' lib/common.sh
+grep -q 'Password|密码' lib/wizard.sh
+if grep -q 'wizard_offer_reinstall' lib/wizard.sh; then
+  echo 'FAIL: normal wizard must not ask for DD/reinstall' >&2; exit 1
+fi
 if [[ -d proxy || -d apps ]]; then
-  echo 'FAIL: v1.3.0 must not ship a duplicate proxy center or app installers' >&2; exit 1
+  echo 'FAIL: project must not ship a duplicate proxy center or app installers' >&2; exit 1
 fi
 
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.3.0" ]]
+ROOT_DIR="$ROOT_DIR" bash -c '''set -Eeuo pipefail
+source "$ROOT_DIR/lib/common.sh"
+source "$ROOT_DIR/lib/validate.sh"
+set_config_defaults
+PROFILE=lucky-web
+ROOT_DOMAIN=example.com
+ENABLE_DOCKER=true
+ENABLE_CF_WS=false
+resolve_auto_settings
+validate_config
+[[ "$ENABLE_SUBSCRIPTION_RESOLVED" == false ]]
+[[ "$LUCKY_DOMAIN" == lucky.example.com ]]
+profile_has_domain
+profile_has_lucky
+! profile_has_xui
+'''
+
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.3.1" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh

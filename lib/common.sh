@@ -165,12 +165,13 @@ normalize_path() {
   printf '%s' "$p"
 }
 
-profile_has_domain() { [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]]; }
-profile_has_xui() { [[ "$PROFILE" != "base-only" ]]; }
+profile_has_domain() { [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" || "$PROFILE" == "lucky-web" ]]; }
+profile_has_xui() { [[ "$PROFILE" == "reality-only" || "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]]; }
+profile_has_lucky() { [[ "$PROFILE" == "lucky-reality" || "$PROFILE" == "lucky-web" ]]; }
 
 resolve_auto_settings() {
   case "$PROFILE" in
-    base-only)
+    base-only|lucky-web)
       ENABLE_SUBSCRIPTION_RESOLVED=false; SUBSCRIPTION_EXPOSE_MODE_RESOLVED="none" ;;
     reality-only)
       ENABLE_SUBSCRIPTION_RESOLVED=true; SUBSCRIPTION_EXPOSE_MODE_RESOLVED="direct-ip-https" ;;
@@ -187,12 +188,14 @@ resolve_auto_settings() {
   [[ -n "${SUBSCRIPTION_PORT_SELECTED:-}" ]] && SUBSCRIPTION_PORT="$SUBSCRIPTION_PORT_SELECTED"
 
   if profile_has_domain; then
+    LUCKY_DOMAIN="${LUCKY_DOMAIN_OVERRIDE:-lucky.${ROOT_DOMAIN}}"
+    LUCKY_DOMAIN="${LUCKY_DOMAIN_OVERRIDE:-lucky.${ROOT_DOMAIN}}"
     PANEL_DOMAIN="${PANEL_DOMAIN_OVERRIDE:-xui.${ROOT_DOMAIN}}"
     NODE_DOMAIN="${NODE_DOMAIN_OVERRIDE:-node.${ROOT_DOMAIN}}"
   else
-    PANEL_DOMAIN=""; NODE_DOMAIN=""
+    LUCKY_DOMAIN=""; PANEL_DOMAIN=""; NODE_DOMAIN=""
   fi
-  export ENABLE_SUBSCRIPTION_RESOLVED SUBSCRIPTION_EXPOSE_MODE_RESOLVED PANEL_DOMAIN NODE_DOMAIN
+  export ENABLE_SUBSCRIPTION_RESOLVED SUBSCRIPTION_EXPOSE_MODE_RESOLVED LUCKY_DOMAIN PANEL_DOMAIN NODE_DOMAIN
 }
 
 
@@ -245,6 +248,7 @@ set_config_defaults() {
   ROOT_DOMAIN=""
   DNS_PROVIDER="cloudflare"
   LE_EMAIL=""
+  LUCKY_DOMAIN_OVERRIDE=""
   PANEL_DOMAIN_OVERRIDE=""
   NODE_DOMAIN_OVERRIDE=""
   REALITY_TARGET_MODE="auto"

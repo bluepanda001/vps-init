@@ -71,6 +71,7 @@ wizard_collect_admin_credentials() {
   echo
   echo "面板管理账号（不会写入普通 config.env；只保存在 root-only state/secrets）："
   local u p p2
+  if [[ "$W_PROFILE" != "lucky-web" ]]; then
   while true; do
     if [[ -n "${XUI_USERNAME:-}" ]]; then
       read -r -p "3x-ui 用户名（留空=保持当前 ${XUI_USERNAME}）: " u
@@ -91,8 +92,9 @@ wizard_collect_admin_credentials() {
   done
   W_XUI_USERNAME_INPUT="$u"
   W_XUI_PASSWORD_INPUT="$p"
+  fi
 
-  if [[ "$W_PROFILE" == "lucky-reality" ]]; then
+  if [[ "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
     echo
     while true; do
       if [[ -n "${LUCKY_USERNAME:-}" ]]; then
@@ -162,35 +164,26 @@ wizard_existing_vps_main_key() {
   awk '$1=="ssh-ed25519" && $NF=="vps-main" {print; exit}' /root/.ssh/authorized_keys
 }
 
-wizard_offer_reinstall() {
-  # Destructive reinstall is pinned to a reviewed upstream commit.
+wizard_reinstall() {
+  # Destructive reinstall is deliberately separate from the normal install wizard.
   local reinstall_repo="bin456789/reinstall"
   local reinstall_commit="2bcbc96100fe733bf9a16d609f799246f62666e5"
-  local choice virt confirm_word script current_port key
+  local virt confirm_word script current_port key dd_password="" dd_password2=""
   local -a cmd existing_keys
 
-  echo
-  choice="$(wizard_select "系统准备：" \
-    "不重装，直接初始化当前系统（推荐：系统已经是干净 Ubuntu 24.04 时选这个）" \
-    "一键 DD / 重装 Ubuntu 24.04 Minimal（bin456789/reinstall）" \
-    "返回 / 取消本次向导")"
-
-  case "$choice" in
-    1) return 0 ;;
-    3) return 12 ;;
-  esac
-
+  require_root
+  [[ -t 0 ]] || die "系统重装需要交互式终端。"
+  wizard_banner
   echo
   echo "============================================================"
-  echo "                 危险操作：整盘重装"
+  echo "                 系统重装 / 一键 DD"
   echo "============================================================"
-  echo "将调用我们之前用过的：$reinstall_repo"
-  echo "固定上游提交：$reinstall_commit"
-  echo
   echo "目标系统：Ubuntu 24.04 Minimal"
+  echo "上游：$reinstall_repo"
+  echo "固定提交：$reinstall_commit"
+  echo
   echo "警告：重装会清除主硬盘全部数据，包括所有分区。"
   echo "当前 vps-init、3x-ui、Docker、网站、证书等磁盘数据都会被删除。"
-  echo "重启后 SSH 会断开；系统安装完成后，需要重新连接并再次运行 vps-init 一键命令。"
   echo
 
   virt="$(systemd-detect-virt 2>/dev/null || true)"
@@ -201,62 +194,74 @@ wizard_offer_reinstall() {
   esac
 
   read -r -p "确认清空整盘并重装 Ubuntu 24.04 Minimal，请输入大写 DD： " confirm_word
-  [[ "$confirm_word" == "DD" ]] || { echo "未输入 DD，已取消重装，返回安装向导。"; return 0; }
+  [[ "$confirm_word" == "DD" ]] || { echo "未输入 DD，已取消。"; return 0; }
 
   script="/root/reinstall.sh"
-  curl -fL --retry 3 --connect-timeout 10 --max-time 60     -o "$script"     "https://raw.githubusercontent.com/$reinstall_repo/$reinstall_commit/reinstall.sh"
+  curl -fL --retry 3 --connect-timeout 10 --max-time 60 -o "$script" \
+    "https://raw.githubusercontent.com/$reinstall_repo/$reinstall_commit/reinstall.sh"
   chmod 700 "$script"
+
+  # Upstream currently echoes the plaintext password in several summary blocks.
+  # vps-init never needs that behavior, so redact it before execution.
+  sed -i -E 's/echo "Password: \$password"/echo "Password: [hidden]"/g' "$script"
 
   current_port="$(wizard_detect_ssh_port)"
   mapfile -t existing_keys < <(wizard_existing_ed25519_keys || true)
 
-  cmd=(bash "$script" ubuntu 24.04 --minimal --user root)
+  cmd=(bash "$script" ubuntu 24.04 --minimal --user root --ssh-port "$current_port")
   if (( ${#existing_keys[@]} > 0 )); then
     echo
     echo "检测到当前 root 的 ${#existing_keys[@]} 把 ED25519 公钥。DD 后会全部保留；vps-main 会优先传入。"
-    # The pinned bin456789/reinstall commit appends repeated --ssh-key values
-    # into the target authorized_keys, so pass every unique ED25519 key.
     for key in "${existing_keys[@]}"; do
       cmd+=(--ssh-key "$key")
     done
-    cmd+=(--ssh-port "$current_port")
+    # Password login is not needed when an SSH key is available. Still pass a
+    # strong random value so upstream never opens an interactive plaintext prompt.
+    dd_password="$(random_b64url 40 32)"
+    cmd+=(--password "$dd_password")
   else
     echo
     echo "当前没有检测到 root 的 ED25519 authorized key。"
-    echo "上游 reinstall 脚本会在需要时要求你设置重装后的 SSH 登录凭据。"
+    echo "请设置重装后的临时 root SSH 密码（输入不会显示）："
+    while true; do
+      read -r -s -p "密码: " dd_password; echo
+      [[ ${#dd_password} -ge 10 ]] || { echo "密码至少 10 个字符。"; continue; }
+      read -r -s -p "再次输入: " dd_password2; echo
+      [[ "$dd_password" == "$dd_password2" ]] || { echo "两次密码不一致，请重新输入。"; continue; }
+      break
+    done
+    cmd+=(--password "$dd_password")
   fi
 
   echo
-  echo "开始准备一键重装（此阶段只写入下一次启动的重装环境；真正清盘在 reboot 后开始）..."
-  "${cmd[@]}"
+  echo "开始准备一键重装（真正清盘会在 reboot 后开始）..."
+  "${cmd[@]}" 2>&1 | sed -E 's/^([[:space:]]*(Password|密码)[[:space:]]*:).*/\1 [hidden]/I'
+  unset dd_password dd_password2
 
   echo
   echo "============================================================"
   echo "Ubuntu 24.04 Minimal 重装已经准备好。"
   echo
-  echo "在重启前如果改变主意，可运行："
+  echo "重启前如果改变主意，可运行："
   echo "  bash /root/reinstall.sh reset"
   echo
-  echo "重启后开始真正重装；SSH 会断开。"
-  echo "系统装好并重新 SSH 登录后，再执行："
-  echo
+  echo "系统装好重新 SSH 登录后，直接运行："
   echo "  bash <(curl -fsSL https://raw.githubusercontent.com/bluepanda001/vps-init/main/install.sh)"
   echo
-  echo "第二次进入向导时选择：不重装，直接初始化当前系统。"
+  echo "新系统会直接进入安装方式 / Profile 选择，不会再次询问是否 DD。"
   echo "============================================================"
   echo
 
   if wizard_yesno "现在立即 reboot 开始重装？" y; then
     sync
-    reboot
-    # reboot(8) may return before systemd actually tears down this SSH
-    # session. Propagate a special status so a parent menu does not print
-    # a misleading "按 Enter 返回菜单" while the machine is going down.
-    return 42
+    systemctl reboot
+    # A requested reboot is a successful terminal action; do not propagate a
+    # synthetic non-zero status that the global ERR trap could report as failure.
+    exit 0
   fi
 
   echo "已暂缓 reboot。准备好后手动执行：reboot"
-  return 12
+  return 0
 }
 
 wizard_shell_quote_value() {
@@ -306,6 +311,7 @@ wizard_collect_ssh_key() {
   if [[ -n "$existing_vps_main" ]]; then
     echo
     echo "检测到 root 已经安装统一 vps-main 公钥："
+    echo "服务器公钥位置：/root/.ssh/authorized_keys"
     ssh-keygen -lf <(printf '%s\n' "$existing_vps_main") 2>/dev/null || true
     if wizard_yesno "继续使用这把 vps-main？" y; then
       W_SSH_PUBLIC_KEY="$existing_vps_main"
@@ -331,10 +337,14 @@ wizard_collect_ssh_key() {
 ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\vps-main-ed25519" -C "vps-main"
 Get-Content "$env:USERPROFILE\.ssh\vps-main-ed25519.pub" | Set-Clipboard
 
+Windows 公钥文件：$env:USERPROFILE\.ssh\vps-main-ed25519.pub
+VPS 写入位置：/root/.ssh/authorized_keys
+
 生成后，把无 .pub 后缀的私钥导入 Netcatty Keychain，Label 固定为 vps-main。
 私钥只保存在 Windows / Netcatty Keychain，绝对不要上传到 VPS、GitHub 或聊天。
 EOF2
   elif [[ "$choice" == 3 && -n "$existing_any" ]]; then
+    echo "服务器公钥位置：/root/.ssh/authorized_keys"
     W_SSH_PUBLIC_KEY="$existing_any"
     W_SSH_IDENTITY_HINT=""
     return 0
@@ -368,36 +378,30 @@ wizard_collect() {
   wizard_banner
   echo
 
-  # First decision: optionally reinstall to a known-clean Ubuntu before
-  # collecting any VPS Init settings. Major choice screens include an explicit
-  # way back so an accidental number does not force the rest of the wizard.
-  local prep_rc=0 mode_choice profile_choice current_port custom
+  # Normal installation starts directly with install mode/profile. Destructive
+  # reinstall is intentionally a separate `vps-init reinstall` workflow.
+  local mode_choice profile_choice current_port custom
   while true; do
-    prep_rc=0
-    wizard_offer_reinstall || prep_rc=$?
-    (( prep_rc == 42 )) && return 42
-    (( prep_rc == 12 )) && return 12
-
     mode_choice="$(wizard_select "安装方式：" \
       "快速安装（推荐：沿用当前 SSH 端口，只问必要项目）" \
-      "自定义安装（可改端口/路径/订阅端口/Docker 等）" \
-      "返回系统准备")"
-    [[ "$mode_choice" == 3 ]] && continue
+      "自定义安装（可改端口/路径/订阅端口/Docker 等）")"
     custom="false"
     [[ "$mode_choice" == 2 ]] && custom="true"
 
     profile_choice="$(wizard_select "请选择部署模式：" \
-      "Base Only - 系统初始化/安全/BBR/Swap，不安装 3x-ui" \
+      "Base Only - 仅系统初始化/安全/BBR/Swap，不安装节点或 Web Gateway" \
+      "Lucky Web Only - Base + Docker + Lucky + Cloudflare 域名/SSL，不安装任何节点（推荐 Web 服务器）" \
       "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
-      "Lucky + Reality - 推荐：图形化 Web Gateway + Reality，共用公网 443，需要 Cloudflare 域名" \
+      "Lucky + Reality - 图形化 Web Gateway + Reality，共用公网 443，需要 Cloudflare 域名" \
       "Nginx + Reality - 轻量/高级：纯 Nginx 配置 + Reality，需要 Cloudflare 域名" \
       "返回安装方式")"
-    [[ "$profile_choice" == 5 ]] && continue
+    [[ "$profile_choice" == 6 ]] && continue
     case "$profile_choice" in
       1) W_PROFILE="base-only" ;;
-      2) W_PROFILE="reality-only" ;;
-      3) W_PROFILE="lucky-reality" ;;
-      4) W_PROFILE="nginx-reality" ;;
+      2) W_PROFILE="lucky-web" ;;
+      3) W_PROFILE="reality-only" ;;
+      4) W_PROFILE="lucky-reality" ;;
+      5) W_PROFILE="nginx-reality" ;;
     esac
     break
   done
@@ -434,7 +438,7 @@ wizard_collect() {
   wizard_collect_admin_credentials
 
   W_ROOT_DOMAIN=""; W_LE_EMAIL=""
-  if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
+  if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
     echo
     while [[ -z "$W_ROOT_DOMAIN" ]]; do
       W_ROOT_DOMAIN="$(wizard_prompt_default "Cloudflare 根域名（例如 example.com）" "")"
@@ -444,7 +448,7 @@ wizard_collect() {
   fi
 
   W_REALITY_TARGET_MODE="auto"; W_REALITY_TARGET=""
-  if [[ "$W_PROFILE" != "base-only" && "$custom" == true ]]; then
+  if [[ "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" && "$custom" == true ]]; then
     local target_choice
     target_choice="$(wizard_select "Reality Target：" "自动检测并推荐（推荐）" "手动填写")"
     if [[ "$target_choice" == 2 ]]; then
@@ -457,6 +461,7 @@ wizard_collect() {
   W_SUB_PATH="/zhg/"
   W_SUBSCRIPTION_PORT="2096"
   W_ENABLE_DOCKER="false"
+  [[ "$W_PROFILE" == "lucky-web" ]] && W_ENABLE_DOCKER="true"
   W_ENABLE_CF_WS="false"
   if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
     W_ENABLE_CF_WS="true"
@@ -466,7 +471,7 @@ wizard_collect() {
       fi
     fi
   fi
-  if [[ "$custom" == true && "$W_PROFILE" != "base-only" ]]; then
+  if [[ "$custom" == true && "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" ]]; then
     W_PANEL_PATH="$(normalize_path "$(wizard_prompt_default "3x-ui 面板 URI Path" "/zhg/")")"
     local sub_input
     sub_input="$(wizard_prompt_default "订阅 URI Path" "/zhg/")"
@@ -474,7 +479,7 @@ wizard_collect() {
     W_SUBSCRIPTION_PORT="$(wizard_prompt_default "3x-ui Subscription 内部/直连端口" "2096")"
     [[ "$W_SUBSCRIPTION_PORT" =~ ^[0-9]+$ ]] && ((W_SUBSCRIPTION_PORT>=1 && W_SUBSCRIPTION_PORT<=65535)) || die "订阅端口无效。"
   fi
-  if [[ "$custom" == true ]]; then
+  if [[ "$custom" == true && "$W_PROFILE" != "lucky-web" ]]; then
     if wizard_yesno "同时安装 Docker Engine/Compose？" n; then W_ENABLE_DOCKER="true"; fi
   fi
 
@@ -484,7 +489,7 @@ wizard_collect() {
   echo "IPv4              : $W_SERVER_IP"
   echo "SSH Port          : $W_SSH_PORT"
   [[ -n "$W_ROOT_DOMAIN" ]] && echo "Root Domain       : $W_ROOT_DOMAIN"
-  if [[ "$W_PROFILE" != "base-only" ]]; then
+  if [[ "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" ]]; then
     echo "Panel URI         : $W_PANEL_PATH"
     echo "Subscription URI  : $W_SUB_PATH"
     echo "Subscription Port : $W_SUBSCRIPTION_PORT"
@@ -495,13 +500,18 @@ wizard_collect() {
     else
       echo "3x-ui Credentials : 保持现有 / 新部署自动生成"
     fi
-    if [[ "$W_PROFILE" == "lucky-reality" ]]; then
-      if [[ -n "${W_LUCKY_USERNAME_INPUT:-}${W_LUCKY_PASSWORD_INPUT:-}" ]]; then
-        echo "Lucky Credentials : 用户自定义"
-      else
-        echo "Lucky Credentials : 保持现有 / 新部署自动生成"
-      fi
+  fi
+  if [[ "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
+    if [[ -n "${W_LUCKY_USERNAME_INPUT:-}${W_LUCKY_PASSWORD_INPUT:-}" ]]; then
+      echo "Lucky Credentials : 用户自定义"
+    else
+      echo "Lucky Credentials : 保持现有 / 新部署自动生成"
     fi
+  fi
+  if [[ "$W_PROFILE" == "lucky-web" ]]; then
+    echo "Web Gateway       : Lucky direct :443"
+    echo "Lucky Domain      : lucky.${W_ROOT_DOMAIN}"
+    echo "Node / 3x-ui      : NOT INSTALLED"
   fi
   echo "Docker            : $W_ENABLE_DOCKER"
   if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then

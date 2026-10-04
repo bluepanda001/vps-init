@@ -20,7 +20,7 @@ UNIT
 }
 
 module_lucky() {
-  [[ "$PROFILE" == "lucky-reality" ]] || return 0
+  profile_has_lucky || return 0
   local ver=2.27.2 arch url expected tmp
   case "$(uname -m)" in
     x86_64|amd64) arch=x86_64; expected=78adf3fa5e8869be0b1510cb7bcc755d57dccb13252989c8394a7207a392fe66 ;;
@@ -93,8 +93,13 @@ UNIT
 
   module_landing_service
   python3 "$ROOT_DIR/modules/lucky/lucky_api.py" --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" sync-cert --cert "$DOMAIN_CERT_FILE" --key "$DOMAIN_KEY_FILE" >/dev/null
-  python3 "$ROOT_DIR/modules/lucky/lucky_api.py" --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" configure-web \
-    --panel-domain "$PANEL_DOMAIN" --node-domain "$NODE_DOMAIN" --panel-port "$XUI_PANEL_PORT" --sub-port "$SUBSCRIPTION_PORT" --landing-port 18080 >/dev/null
+  if [[ "$PROFILE" == "lucky-web" ]]; then
+    python3 "$ROOT_DIR/modules/lucky/lucky_api.py" --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" configure-web-only \
+      --lucky-domain "$LUCKY_DOMAIN" --landing-port 18080 >/dev/null
+  else
+    python3 "$ROOT_DIR/modules/lucky/lucky_api.py" --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" configure-web \
+      --panel-domain "$PANEL_DOMAIN" --node-domain "$NODE_DOMAIN" --panel-port "$XUI_PANEL_PORT" --sub-port "$SUBSCRIPTION_PORT" --landing-port 18080 >/dev/null
+  fi
   systemctl restart lucky; sleep 2
 
   if [[ "$(readlink -f "$ROOT_DIR/modules/lucky/sync-cert.sh")" != "$(readlink -f /opt/vps-init/modules/lucky/sync-cert.sh 2>/dev/null || printf /opt/vps-init/modules/lucky/sync-cert.sh)" ]]; then
@@ -108,7 +113,13 @@ set -e
 /opt/vps-init/modules/lucky/sync-cert.sh
 HOOK
   chmod 755 /etc/letsencrypt/renewal-hooks/deploy/90-vps-init-lucky
-  secret_set XUI_PUBLIC_URL "https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"
-  secret_set SUBSCRIPTION_BASE_URL "https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}"
-  log_ok "Lucky 8443 HTTPS 后端与两个域名反代已配置；公网 443 将由 Nginx Stream 统一分流。"
+  if [[ "$PROFILE" == "lucky-web" ]]; then
+    secret_set LUCKY_PUBLIC_URL "https://${LUCKY_DOMAIN}"
+    log_ok "Lucky Web Only 已配置：公网 443 由 Lucky 直接提供 HTTPS；管理域名 https://${LUCKY_DOMAIN}。"
+  else
+    secret_set LUCKY_PUBLIC_URL ""
+    secret_set XUI_PUBLIC_URL "https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"
+    secret_set SUBSCRIPTION_BASE_URL "https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}"
+    log_ok "Lucky 8443 HTTPS 后端与两个域名反代已配置；公网 443 将由 Nginx Stream 统一分流。"
+  fi
 }
