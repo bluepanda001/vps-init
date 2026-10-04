@@ -1,44 +1,19 @@
 #!/usr/bin/env bash
 
 docker_merge_daemon_config() {
-  local cfg=/etc/docker/daemon.json tmp changed=false restore=""
+  local cfg=/etc/docker/daemon.json tmp restore=""
   mkdir -p /etc/docker
   tmp="$(mktemp)"
 
   if [[ -f "$cfg" ]]; then
     python3 -m json.tool "$cfg" >/dev/null 2>&1 ||
       die "现有 $cfg 不是有效 JSON；为避免破坏 Docker 配置，已停止且不会覆盖。"
-    cp -a "$cfg" "$tmp"
+    python3 "$ROOT_DIR/optional/docker/merge_daemon.py" --input "$cfg" --output "$tmp" ||
+      { rm -f "$tmp"; die "Docker daemon.json 合并失败；原配置未修改。"; }
   else
-    printf '{}\n' > "$tmp"
+    python3 "$ROOT_DIR/optional/docker/merge_daemon.py" --output "$tmp" ||
+      { rm -f "$tmp"; die "Docker daemon.json 生成失败。"; }
   fi
-
-  python3 - "$tmp" <<'PY_DOCKER_JSON'
-import json,sys
-p=sys.argv[1]
-with open(p,encoding='utf-8') as f:
-    cfg=json.load(f)
-if not isinstance(cfg,dict):
-    raise SystemExit('daemon.json root must be an object')
-driver=cfg.get('log-driver')
-if driver is None:
-    cfg['log-driver']='json-file'
-    opts=cfg.setdefault('log-opts',{})
-    if not isinstance(opts,dict):
-        raise SystemExit('log-opts must be an object')
-    opts.setdefault('max-size','10m')
-    opts.setdefault('max-file','3')
-elif driver == 'json-file':
-    opts=cfg.setdefault('log-opts',{})
-    if not isinstance(opts,dict):
-        raise SystemExit('log-opts must be an object')
-    opts.setdefault('max-size','10m')
-    opts.setdefault('max-file','3')
-# A user-selected non-json-file driver is intentionally left untouched.
-with open(p,'w',encoding='utf-8') as f:
-    json.dump(cfg,f,ensure_ascii=False,indent=2,sort_keys=True)
-    f.write('\n')
-PY_DOCKER_JSON
 
   dockerd --validate --config-file "$tmp" >/dev/null ||
     { rm -f "$tmp"; die "合并后的 Docker daemon.json 未通过 dockerd --validate；原配置未修改。"; }
@@ -55,7 +30,6 @@ PY_DOCKER_JSON
   fi
   install -m 644 "$tmp" "$cfg"
   rm -f "$tmp"
-  changed=true
 
   if systemctl is-active --quiet docker 2>/dev/null; then
     if ! systemctl restart docker; then
@@ -71,7 +45,7 @@ PY_DOCKER_JSON
     fi
   fi
   rm -f "$restore"
-  [[ "$changed" == true ]] && log_ok "Docker daemon.json 已合并更新；现有 data-root/镜像源/网络/runtime 等字段均保留。"
+  log_ok "Docker daemon.json 已安全合并；现有 data-root/镜像源/网络/runtime 等字段均保留。"
 }
 
 optional_docker() {
