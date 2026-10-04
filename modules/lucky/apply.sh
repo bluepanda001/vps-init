@@ -73,12 +73,12 @@ UNIT
   # Runtime -rResetUser is only a last-resort recovery path for an existing
   # installation whose current credentials are unknown.
   systemctl start lucky
-  for _ in $(seq 1 20); do curl -fsS --max-time 2 http://127.0.0.1:16601/version >/dev/null 2>&1 && break; sleep 1; done
-  curl -fsS --max-time 3 http://127.0.0.1:16601/version >/dev/null || die "Lucky 后台未启动。"
+  for _ in $(seq 1 20); do lucky_local_version_ok 2 && break; sleep 1; done
+  lucky_local_version_ok 3 || die "Lucky 后台未启动。"
 
-  if ! python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+  if ! lucky_api \
       --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" status >/dev/null 2>&1; then
-    if python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+    if lucky_api \
         --user "666" --password "666" status >/dev/null 2>&1; then
       log_info "检测到 Lucky 初始默认凭据，立即轮换为部署阶段设置的管理账号..."
     else
@@ -94,19 +94,19 @@ UNIT
       done
       is_true "$reset_ok" || die "Lucky 运行中，但官方 -rResetUser 控制通道不可用。请确认 Lucky 没有被其他安装方式同时运行；无需重装系统，修复 Lucky 后可直接重跑部署。"
       sleep 1
-      python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+      lucky_api \
         --user "666" --password "666" status >/dev/null 2>&1 || \
         die "Lucky 运行时恢复后仍无法使用默认凭据登录。"
     fi
 
-    python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+    lucky_api \
       --user "666" --password "666" set-admin \
       --new-user "$LUCKY_USERNAME" --new-password "$LUCKY_PASSWORD" >/dev/null || \
       die "Lucky 无法把初始/恢复凭据轮换为项目管理凭据。"
     sleep 1
   fi
 
-  python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+  lucky_api \
     --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" status >/dev/null || \
     die "Lucky 项目管理凭据验证失败。"
 
@@ -116,12 +116,12 @@ UNIT
   secret_set LUCKY_PANEL_SSH_TUNNEL "ssh -L 16601:127.0.0.1:16601 -p ${SSH_PORT} root@${SERVER_IP}"
 
   module_landing_service
-  python3 "$ROOT_DIR/modules/lucky/lucky_api.py" --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" sync-cert --cert "$DOMAIN_CERT_FILE" --key "$DOMAIN_KEY_FILE" >/dev/null
+  lucky_api --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" sync-cert --cert "$DOMAIN_CERT_FILE" --key "$DOMAIN_KEY_FILE" >/dev/null
   if [[ "$PROFILE" == "lucky-web" ]]; then
-    python3 "$ROOT_DIR/modules/lucky/lucky_api.py" --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" configure-web-only \
+    lucky_api --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" configure-web-only \
       --lucky-domain "$LUCKY_DOMAIN" --landing-port 18080 >/dev/null
   else
-    python3 "$ROOT_DIR/modules/lucky/lucky_api.py" --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" configure-web \
+    lucky_api --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" configure-web \
       --panel-domain "$PANEL_DOMAIN" --node-domain "$NODE_DOMAIN" --panel-port "$XUI_PANEL_PORT" --sub-port "$SUBSCRIPTION_PORT" --landing-port 18080 >/dev/null
   fi
   # Apply Lucky SafeURL only after all authenticated loopback API automation
