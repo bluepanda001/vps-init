@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.3.0 的目标是把核心代理入口和后续 Web 服务维护分工清楚：Reality/443/SNI 由 VPS Init 管理，带域名且需要长期挂服务时优先使用 Lucky 作为图形化 Web Gateway。
+V1.3.1 在 Lucky-first Web Gateway 基础上新增 `Lucky Web Only`：只要 Base + Docker + Lucky + Cloudflare wildcard SSL，不安装任何节点；同时把一键 DD 从正常安装向导中完全拆开。
 
 ## 一键安装
 
@@ -32,19 +32,17 @@ vps-init
 
 ## 中文交互向导
 
-首次进入向导时，最前面先询问是否重装系统：
+正常运行 `vps-init wizard` **不再询问是否 DD**，直接进入安装方式和 Profile 选择。系统重装改为独立入口：
 
-```text
-系统准备：
-  1. 不重装，直接初始化当前系统
-  2. 一键 DD / 重装 Ubuntu 24.04 Minimal（bin456789/reinstall）
+```bash
+vps-init reinstall
 ```
 
-选 2 时会调用我们之前使用过的 `bin456789/reinstall`，并固定到上游提交 `2bcbc96100fe733bf9a16d609f799246f62666e5`。DD 前会读取 root 的全部普通 ED25519 `authorized_keys`、去重，并把 `vps-main` 排在最前后通过重复的 `--ssh-key` 全部传给重装脚本，避免旧钥匙排在第一行时把统一主密钥丢掉；同时固定传入 `--user root`，避免上游脚本在无交互/管道执行时卡在用户名提示。它会在真正执行前再次要求输入大写 `DD`；重启前仍可用 `bash /root/reinstall.sh reset` 取消。OpenVZ/LXC 会直接拒绝执行。
+主菜单也有“系统重装 / 一键 DD”。它使用固定提交的 `bin456789/reinstall`，真正清盘前必须输入大写 `DD`；DD 密码采用隐藏输入，并对上游输出再次统一脱敏，不在终端打印明文密码。若已有 ED25519 authorized key，会保留全部唯一公钥，并把 `vps-main` 优先传入。重启前仍可运行 `bash /root/reinstall.sh reset` 取消。
 
-如果执行 DD：当前系统只负责准备重装环境；`reboot` 后才开始清盘安装 Ubuntu 24.04 Minimal。安装完成重新 SSH 登录后，再运行同一条 VPS Init 一键命令，并选择“不重装”。
+DD 完成重新 SSH 登录后，再执行 VPS Init 一键命令，会直接进入安装方式 / Profile，不会再次询问 DD。
 
-随后才进入安装方式与 Profile 选择：
+安装方式与 Profile：
 
 ```text
 安装方式：
@@ -53,18 +51,20 @@ vps-init
 
 部署模式：
   1. Base Only
-  2. Reality Only
-  3. Lucky + Reality（推荐：图形化 Web Gateway）
-  4. Nginx + Reality（轻量/高级）
+  2. Lucky Web Only（Base + Docker + Lucky + 域名/SSL，无节点）
+  3. Reality Only
+  4. Lucky + Reality
+  5. Nginx + Reality（轻量/高级）
 ```
 
-快速安装只询问真正必要的信息；自定义安装才展开 URI Path、订阅端口、Reality Target、Docker 等参数。所有带 3x-ui 的 Profile 都会在部署阶段允许输入 3x-ui 管理用户名/密码；Lucky Profile 还会允许输入 Lucky 用户名/密码。密码输入不回显，留空则保持现有凭据，新部署时自动随机生成，而且这些密码不会写进普通 `config.env`。需要域名并准备长期挂多个 Web/Docker 服务时，推荐选择 `lucky-reality`；`nginx-reality` 保留给偏轻量、偏配置文件管理的场景。
+快速安装只询问真正必要的信息；自定义安装才展开 URI Path、订阅端口、Reality Target、Docker 等参数。`Base Only` 仍然是纯基础初始化；如果完全不需要代理节点、只是想把 VPS 当 Docker/Web 服务器，则选 `Lucky Web Only`，Docker 默认开启，Lucky 用户名/密码可在部署阶段自定义。带 3x-ui 的 Profile 仍可自定义 3x-ui 管理凭据。所有密码输入均不回显。
 
 ## Profile
 
 | Profile | 公网 443 | 域名 | 订阅 | Web 前端 |
 |---|---|---|---|---|
 | `base-only` | 不配置 | 不需要 | 无 | 无 |
+| `lucky-web` | Lucky 直接监听 HTTPS :443 | 必须 | 无 | Lucky 图形化 Web Gateway + Docker；不安装节点 |
 | `reality-only` | 3x-ui 自带 Xray Reality | 不需要 | IP HTTPS | 无 |
 | `lucky-reality` | Nginx Stream SNI 分流 | 必须 | Lucky HTTPS 反代 | Nginx Stream → Reality :1443 / Lucky :8443（推荐 Web Gateway） |
 | `nginx-reality` | Nginx Stream SNI 分流 | 必须 | Nginx HTTPS 反代 | Nginx 内部 TLS :8443（轻量/高级） |
@@ -124,6 +124,37 @@ Nginx Stream ssl_preread
 ```
 
 证书使用 Cloudflare DNS-01 + Certbot wildcard。Ubuntu 24.04 使用 `nginx` + `libnginx-mod-stream`；部署前会显式确认当前 Nginx 构建包含 `stream_ssl_preread` 支持，并在启动前执行 `nginx -t`。
+
+## Lucky Web Only
+
+用于“只做服务器，不需要代理节点”的 VPS：
+
+```text
+Base 初始化
+├─ SSH / UFW / Fail2ban / BBR / Swap
+├─ Docker Engine + Compose（默认）
+├─ Cloudflare DNS
+├─ Let's Encrypt wildcard SSL
+│  ├─ <ROOT_DOMAIN>
+│  └─ *.<ROOT_DOMAIN>
+└─ Lucky
+   ├─ 公网 HTTPS :443
+   ├─ lucky.<ROOT_DOMAIN> 管理入口
+   └─ 后续由用户自己添加 Docker/Web 服务反代
+
+不会安装：
+  3x-ui / Xray / Reality / Subscription / CDN WS
+```
+
+该 Profile 不需要 Nginx Stream，因为没有 Reality 与 HTTPS 争用 443；Lucky 直接监听公网 443。Cloudflare 会创建 `lucky.<ROOT_DOMAIN>` 以及 wildcard DNS 记录，证书自动同步进 Lucky。
+
+应用仍由用户自行安装。例如 Docker 端口建议只绑定 loopback：
+
+```text
+127.0.0.1:5700:5700
+```
+
+然后在 Lucky 中把 `ql.<domain>` 反代到 `http://127.0.0.1:5700`。
 
 ## Lucky + Reality
 
