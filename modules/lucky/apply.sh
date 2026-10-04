@@ -63,23 +63,42 @@ UNIT
   state_set LUCKY_USERNAME "$LUCKY_USERNAME"
   state_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
 
-  # Lucky 2.27.2 stores its active configuration as encrypted/modular *.lkcf
-  # files. Its documented runtime control command resets credentials to
-  # 666:666; do NOT pass -cd to runtime control commands. Then immediately
-  # rotate to project-managed random credentials through the authenticated API.
+  # Lucky 2.27.2 fresh installs use the documented default 666:666.
+  # First try the desired persisted credentials; if they are not active yet,
+  # try 666:666 and rotate it immediately through the authenticated API.
+  # Runtime -rResetUser is only a last-resort recovery path for an existing
+  # installation whose current credentials are unknown.
   systemctl start lucky
   for _ in $(seq 1 20); do curl -fsS --max-time 2 http://127.0.0.1:16601/version >/dev/null 2>&1 && break; sleep 1; done
   curl -fsS --max-time 3 http://127.0.0.1:16601/version >/dev/null || die "Lucky 后台未启动。"
 
   if ! python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
       --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" status >/dev/null 2>&1; then
-    /opt/lucky/lucky -rUnlock >/dev/null 2>&1 || true
-    /opt/lucky/lucky -rResetUser >/dev/null || die "Lucky 官方运行时命令无法重置管理凭据。"
-    sleep 1
+    if python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+        --user "666" --password "666" status >/dev/null 2>&1; then
+      log_info "检测到 Lucky 初始默认凭据，立即轮换为部署阶段设置的管理账号..."
+    else
+      log_warn "Lucky 当前凭据既不是项目保存值也不是初始默认值，尝试官方运行时恢复..."
+      local reset_ok=false
+      /opt/lucky/lucky -rUnlock >/dev/null 2>&1 || true
+      for _ in $(seq 1 10); do
+        if /opt/lucky/lucky -rResetUser >/dev/null 2>&1; then
+          reset_ok=true
+          break
+        fi
+        sleep 1
+      done
+      is_true "$reset_ok" || die "Lucky 运行中，但官方 -rResetUser 控制通道不可用。请确认 Lucky 没有被其他安装方式同时运行；无需重装系统，修复 Lucky 后可直接重跑部署。"
+      sleep 1
+      python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
+        --user "666" --password "666" status >/dev/null 2>&1 || \
+        die "Lucky 运行时恢复后仍无法使用默认凭据登录。"
+    fi
+
     python3 "$ROOT_DIR/modules/lucky/lucky_api.py" \
       --user "666" --password "666" set-admin \
       --new-user "$LUCKY_USERNAME" --new-password "$LUCKY_PASSWORD" >/dev/null || \
-      die "Lucky 默认凭据重置成功后，无法写入项目管理凭据。"
+      die "Lucky 无法把初始/恢复凭据轮换为项目管理凭据。"
     sleep 1
   fi
 
