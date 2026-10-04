@@ -3,7 +3,7 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 for f in vps-init $(find . -type f -name '*.sh' ! -path './verify/selftest.sh' | sort); do bash -n "$f"; done
-python3 -m py_compile modules/3x-ui/xui_api.py modules/cloudflare/cloudflare.py modules/lucky/lucky_api.py
+python3 -m py_compile modules/3x-ui/xui_api.py modules/cloudflare/cloudflare.py modules/lucky/lucky_api.py optional/docker/merge_daemon.py verify/tests/test_lucky_behavior.py verify/tests/test_docker_merge.py
 find modules -type d -name '__pycache__' -prune -exec rm -rf {} +
 for p in base-only lucky-web reality-only nginx-reality lucky-reality; do
   cfg=$(mktemp)
@@ -295,7 +295,63 @@ grep -q 'secret_set LUCKY_SAFE_URL' modules/lucky/apply.sh
 grep -q 'secret_line "安全入口" LUCKY_SAFE_URL' vps-init
 grep -q 'Lucky SafeURL' verify/verify.sh
 grep -q 'https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}' vps-init
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.3.5" ]]
+python3 verify/tests/test_lucky_behavior.py
+python3 verify/tests/test_docker_merge.py
+bash verify/tests/test_shell_behaviors.sh
+
+# Stability v1.3.6: behavior, not merely source presence.
+grep -q 'systemd-run --quiet --unit=' core/ssh.sh
+grep -q 'render_ssh_stage_config' core/ssh.sh
+grep -q 'VPSINIT_VERSION=' vps-init
+if grep -q '^  apt-get -y upgrade
+# Optional destructive reinstall entry must stay explicit and pinned.
+grep -q 'bin456789/reinstall' lib/wizard.sh
+grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
+grep -q 'ubuntu 24.04 --minimal --user root' lib/wizard.sh
+grep -q '请输入大写 DD' lib/wizard.sh
+grep -q 'reinstall.sh reset' lib/wizard.sh
+
+# V1.2.5: wizard Profile migrations are transactional at the config-file level.
+grep -q '失败迁移残留：443 当前由 Xray 占用' vps-init
+grep -q '尝试自动恢复上一个已验证 Profile' lib/wizard.sh
+grep -q 'VPSINIT_ALLOW_PROFILE_SWITCH=1.*apply.*backup' lib/wizard.sh
+grep -q 'config.env.pending' lib/wizard.sh
+grep -q '原有已验证配置未被候选配置覆盖' lib/wizard.sh
+python3 - <<'PY_CONFIG_TXN'
+from pathlib import Path
+s=Path("vps-init").read_text()
+assert 'resolve_runtime_ports\npersist_config "$cfg"\ncore_swap' not in s
+verify=s.index('if verify_all; then')
+persist=s.index('persist_config "$cfg"', verify)
+state=s.index('state_set DEPLOYED_PROFILE "$PROFILE"', verify)
+assert verify < persist < state
+PY_CONFIG_TXN
+
+# V1.2.5: Lucky 2.27.2 current frontend requires an anti-replay nonce and
+# uses Lucky-Admin-Token instead of Authorization for authenticated API calls.
+grep -q 'def lucky_nonce' modules/lucky/lucky_api.py
+grep -q 'Lucky-Admin-Token' modules/lucky/lucky_api.py
+grep -q "'TwoFA':''" modules/lucky/lucky_api.py
+
+# V1.2.5: Lucky 2.27.2 recovery uses documented runtime reset, without -cd,
+# then immediately rotates away from the default account through the API.
+grep -q '/opt/lucky/lucky -rResetUser' modules/lucky/apply.sh
+! grep -q -- '-rResetUser .* -cd' modules/lucky/apply.sh
+! grep -q -- '-setconf -key AdminAccount' modules/lucky/apply.sh
+grep -q -- '--user "666" --password "666" set-admin' modules/lucky/apply.sh
+
+# V1.2.5: Lucky + Reality must front REALITY with Nginx Stream. REALITY sends
+# unauthenticated/non-REALITY TLS to target, so Xray-side fallback cannot expose Lucky.
+grep -q 'nginx-reality|lucky-reality) listen="127.0.0.1"; port=1443' modules/reality/apply.sh
+grep -q '\[\[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" \]\]' modules/nginx/apply.sh
+grep -q 'Reality -> 1443，普通 HTTPS -> Lucky 8443' modules/nginx/apply.sh
+! grep -q 'fallback="127.0.0.1:8443"' modules/reality/apply.sh
+echo 'SELFTEST_OK'
+ core/system.sh; then
+  echo 'FAIL: normal apply still performs a full system upgrade' >&2; exit 1
+fi
+grep -q 'vps-init upgrade-system' vps-init
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.3.6" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
