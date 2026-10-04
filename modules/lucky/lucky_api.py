@@ -95,6 +95,33 @@ def sync_cert(base,token,cert,key,remark='vps-init-wildcard'):
       'AllSyncClient':False,'SyncClientList':[]
     })
 
+def configure_web_only(base,token,lucky_domain,landing_port):
+    name='vps-init-web-only'
+    rows=request(base,'GET','/api/webservice/rules',token).get('ruleList') or []
+    for row in rows:
+      if isinstance(row,dict) and row.get('RuleName')==name and row.get('RuleKey'):
+        request(base,'DELETE','/api/webservice/rule/'+str(row['RuleKey']),token)
+    body={
+      'RuleName':name,'RuleKey':'','DiaglogShowMode':'simple','Enable':True,
+      'Network':'tcp4','CorazaWAFInstance':'','ListenIP':'0.0.0.0','ListenPort':443,
+      'AutoOptionsFirewall':False,'EnableTLS':True,'TLSMinVersion':2,
+      'MaxHeaderKBytes':32,'IPFilterRule':'disable',
+      'MaxContinuous404Count':0,'MaxCorazaInterceptionCount':0,
+      'SendRateLimitEnabled':False,'SendRateLimit':0,
+      'ReceRateLimitEnabled':False,'ReceRateLimit':0,
+      'SingleConnSendRateLimitEnabled':False,'SingleConnSendRateLimit':0,
+      'SingleConnReceRateLimitEnabled':False,'SingleConnReceRateLimit':0,
+      'GlobalAllowAllThirdAuthUsers':False,'GlobalThirdAuthLoginUserList':[],
+      'GlobalAllowThirdUserSkipTwoFA':False,
+      'SingleIPSendRateLimitEnabled':False,'SingleIPSendRateLimit':0,
+      'SingleIPReceRateLimitEnabled':False,'SingleIPReceRateLimit':0,
+      'Http3':False,'GlobalBasicAuthUserList':'','ECH':False,'ECHDomain':'',
+      'ECDHPrivateKey':'','ECHConfigList':'',
+      'DefaultProxy':default_proxy(f'http://127.0.0.1:{landing_port}'),
+      'ProxyList':[subrule(lucky_domain,'http://127.0.0.1:16601','lucky-admin')]
+    }
+    request(base,'POST','/api/webservice/rules',token,body=body)
+
 def configure_rule(base,token,panel_domain,node_domain,panel_port,sub_port,landing_port):
     name='vps-init-https'
     rows=request(base,'GET','/api/webservice/rules',token).get('ruleList') or []
@@ -134,6 +161,7 @@ def main():
     p=sp.add_parser('set-admin'); p.add_argument('--new-user',required=True); p.add_argument('--new-password',required=True)
     p=sp.add_parser('sync-cert'); p.add_argument('--cert',required=True); p.add_argument('--key',required=True)
     p=sp.add_parser('configure-web'); p.add_argument('--panel-domain',required=True); p.add_argument('--node-domain',required=True); p.add_argument('--panel-port',type=int,required=True); p.add_argument('--sub-port',type=int,required=True); p.add_argument('--landing-port',type=int,default=18080)
+    p=sp.add_parser('configure-web-only'); p.add_argument('--lucky-domain',required=True); p.add_argument('--landing-port',type=int,default=18080)
     sp.add_parser('status')
     a=ap.parse_args()
     try:
@@ -145,6 +173,7 @@ def main():
         request(a.base,'PUT','/api/baseconfigure',tok,body=cfg); print(json.dumps({'ok':True}))
       elif a.cmd=='sync-cert': sync_cert(a.base,tok,a.cert,a.key); print(json.dumps({'ok':True}))
       elif a.cmd=='configure-web': configure_rule(a.base,tok,a.panel_domain,a.node_domain,a.panel_port,a.sub_port,a.landing_port); print(json.dumps({'ok':True}))
+      elif a.cmd=='configure-web-only': configure_web_only(a.base,tok,a.lucky_domain,a.landing_port); print(json.dumps({'ok':True}))
       else: print(json.dumps(request(a.base,'GET','/api/status',tok),separators=(',',':')))
       return 0
     except Exception as e: print(f'lucky_api error: {e}',file=sys.stderr); return 2
