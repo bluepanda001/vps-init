@@ -30,13 +30,13 @@ source "$ROOT_DIR/optional/cf-preferred/apply.sh"
 source "$ROOT_DIR/optional/cloudflaresub/apply.sh"
 source "$ROOT_DIR/verify/verify.sh"
 
-VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION" 2>/dev/null || printf unknown)"
+VPSINIT_VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION" 2>/dev/null || printf unknown)"
 DEFAULT_CFG="$PERSIST_DIR/config.env"
 [[ -f "$DEFAULT_CFG" ]] || DEFAULT_CFG="$ROOT_DIR/config.env"
 
 usage() {
   cat <<TXT
-VPS Init ${VERSION}
+VPS Init ${VPSINIT_VERSION}
 用途：用于 VPS 自动化初始化、配置与验收。
 
 用法：
@@ -125,7 +125,7 @@ prepare_profile_transition() {
 show_status_summary() {
   local cfg="$1"
   load_runtime_config "$cfg"
-  echo "VPS Init ${VERSION}"
+  echo "VPS Init ${VPSINIT_VERSION}"
   echo "Profile           : $PROFILE"
   echo "Server            : ${SERVER_NAME:-}"
   echo "IPv4              : ${SERVER_IP:-未部署/未知}"
@@ -153,7 +153,7 @@ show_info_summary() {
   echo "============================================================"
   echo "                 VPS Init 部署信息"
   echo "============================================================"
-  echo "VPS Init           : $VERSION"
+  echo "VPS Init           : $VPSINIT_VERSION"
   echo "Deployed Version   : ${DEPLOYED_VERSION:-未记录}"
   echo "Profile            : $PROFILE"
   echo "Server             : ${SERVER_NAME:-}"
@@ -568,7 +568,7 @@ chmod 600 "$SECRETS_FILE" 2>/dev/null || true
 if verify_all; then
   persist_config "$cfg"
   state_set DEPLOYED_PROFILE "$PROFILE"
-  state_set DEPLOYED_VERSION "$VERSION"
+  state_set DEPLOYED_VERSION "$VPSINIT_VERSION"
   state_set DEPLOYMENT_VERIFIED_AT "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   log_ok "全部阶段完成；Profile 已在验收通过后写入部署状态。"
 else
