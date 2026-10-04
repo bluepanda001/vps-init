@@ -1,5 +1,13 @@
 # Release Notes
 
+## v1.3.5
+
+- Lucky Profile 默认设置后台“安全入口”为 `zhg`，使用 Lucky 官方 `SetSafeURL` 配置项；部署完成后会读取 `BaseConfigure.SafeURL` 再次校验。
+- Lucky 本地管理地址改为 `http://127.0.0.1:16601/zhg`；Lucky Web Only 的公网管理地址改为 `https://lucky.<ROOT_DOMAIN>/zhg`。
+- `vps-init secrets` 新增“安全入口”字段，并显示带安全入口的完整本地/公网管理地址。
+- `vps-init info`、`vps-init status` 和 `vps-init gateway` 同步显示 Lucky 安全入口及完整管理 URL。
+- 验收新增 Lucky SafeURL 配置检查，并在 Lucky Web Only 中实际请求安全入口路径。
+
 ## v1.3.4
 
 - 修复全新安装 Lucky 时凭据初始化失败：新安装先尝试 Lucky 官方默认账号 `666/666`，成功后立即通过本地 API 轮换为部署向导中设置的用户名/密码。
