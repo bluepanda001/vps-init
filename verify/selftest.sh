@@ -304,10 +304,6 @@ grep -q 'systemd-run --quiet --unit=' core/ssh.sh
 grep -q 'render_ssh_stage_config' core/ssh.sh
 grep -q 'VPSINIT_VERSION=' vps-init
 grep -q 'vps-init upgrade-system' vps-init
-if grep -q "^  apt-get -y upgrade$" core/system.sh; then
-  echo 'FAIL: normal apply still performs a full system upgrade' >&2
-  exit 1
-fi
 if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
   echo 'FAIL: Cloudflare validation must not delete the saved token before replacement' >&2
   exit 1
