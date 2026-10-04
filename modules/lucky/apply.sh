@@ -117,6 +117,7 @@ HOOK
     secret_set LUCKY_PUBLIC_URL "https://${LUCKY_DOMAIN}"
     log_ok "Lucky Web Only 已配置：公网 443 由 Lucky 直接提供 HTTPS；管理域名 https://${LUCKY_DOMAIN}。"
   else
+    secret_set LUCKY_PUBLIC_URL ""
     secret_set XUI_PUBLIC_URL "https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"
     secret_set SUBSCRIPTION_BASE_URL "https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}"
     log_ok "Lucky 8443 HTTPS 后端与两个域名反代已配置；公网 443 将由 Nginx Stream 统一分流。"
