@@ -131,7 +131,8 @@ show_status_summary() {
   echo "IPv4              : ${SERVER_IP:-未部署/未知}"
   echo "SSH Port          : $SSH_PORT"
   if [[ "$PROFILE" == "lucky-web" ]]; then
-    echo "Lucky Domain       : https://${LUCKY_DOMAIN}"
+    echo "Lucky Domain       : https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}"
+    echo "Lucky Safe Entry   : ${LUCKY_SAFE_URL:-zhg}"
     echo "Web Gateway        : Lucky direct :443"
     echo "Docker             : ${ENABLE_DOCKER}"
   fi
@@ -183,8 +184,9 @@ show_info_summary() {
     echo
     echo "Lucky Web Only："
     echo "  Public 443        : Lucky direct HTTPS"
-    echo "  Lucky Domain      : https://${LUCKY_DOMAIN}"
-    echo "  Lucky Local UI    : http://127.0.0.1:16601"
+    echo "  Lucky Domain      : https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}"
+    echo "  Lucky Safe Entry  : ${LUCKY_SAFE_URL:-zhg}"
+    echo "  Lucky Local UI    : http://127.0.0.1:16601/${LUCKY_SAFE_URL:-zhg}"
     echo "  Lucky SSH Tunnel  : ssh -L 16601:127.0.0.1:16601 -p ${SSH_PORT} root@${SERVER_IP}"
     echo "  Wildcard TLS      : ${ROOT_DOMAIN} + *.${ROOT_DOMAIN}"
     echo "  Node Components   : none"
@@ -210,7 +212,8 @@ show_info_summary() {
         echo "  Reality Route     : 443 -> 127.0.0.1:1443"
         echo "  HTTPS Route       : 443 -> Lucky HTTPS 127.0.0.1:8443"
         echo "  Web Gateway       : Lucky (graphical UI, recommended)"
-        echo "  Lucky Local UI    : http://127.0.0.1:16601"
+        echo "  Lucky Safe Entry  : ${LUCKY_SAFE_URL:-zhg}"
+        echo "  Lucky Local UI    : http://127.0.0.1:16601/${LUCKY_SAFE_URL:-zhg}"
         echo "  Lucky SSH Tunnel  : ssh -L 16601:127.0.0.1:16601 -p ${SSH_PORT} root@${SERVER_IP}"
         ;;
       reality-only)
@@ -291,6 +294,7 @@ show_secrets_pretty() {
     if [[ "$deployed" == "lucky-web" ]]; then echo "【一、Lucky 面板】"; else echo "【二、Lucky 面板】"; fi
     secret_line "用户名" LUCKY_USERNAME
     secret_line "密码" LUCKY_PASSWORD
+    secret_line "安全入口" LUCKY_SAFE_URL
     secret_line "本地地址" LUCKY_LOCAL_URL
     secret_line "公网管理地址" LUCKY_PUBLIC_URL
     secret_block "SSH 隧道命令" LUCKY_PANEL_SSH_TUNNEL
@@ -341,7 +345,8 @@ show_gateway_summary() {
       echo "当前 Gateway： Lucky Web Only（无节点）"
       echo "服务状态：     $(systemctl is-active lucky 2>/dev/null || echo inactive)"
       echo "公网 HTTPS：   Lucky 直接监听 :443"
-      echo "管理域名：     https://${LUCKY_DOMAIN}"
+      echo "安全入口：     ${LUCKY_SAFE_URL:-zhg}"
+      echo "管理地址：     https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}"
       echo "Docker：       $(systemctl is-active docker 2>/dev/null || echo inactive)"
       echo "节点组件：     未安装 3x-ui / Xray / Reality / Subscription"
       echo
@@ -351,13 +356,14 @@ show_gateway_summary() {
       echo "当前 Gateway： Lucky（推荐）"
       echo "服务状态：     $(systemctl is-active lucky 2>/dev/null || echo inactive)"
       echo "HTTPS 后端：   127.0.0.1:8443"
-      echo "管理面板：     http://127.0.0.1:16601"
+      echo "安全入口：     ${LUCKY_SAFE_URL:-zhg}"
+      echo "管理面板：     http://127.0.0.1:16601/${LUCKY_SAFE_URL:-zhg}"
       echo
       echo "SSH 隧道："
       echo "  ssh -L 16601:127.0.0.1:16601 -p ${SSH_PORT} root@${SERVER_IP}"
       echo
       echo "连接隧道后，在本机浏览器打开："
-      echo "  http://127.0.0.1:16601"
+      echo "  http://127.0.0.1:16601/${LUCKY_SAFE_URL:-zhg}"
       echo
       echo "Lucky 用户名/密码："
       echo "  vps-init secrets"
