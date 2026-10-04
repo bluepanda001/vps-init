@@ -162,35 +162,26 @@ wizard_existing_vps_main_key() {
   awk '$1=="ssh-ed25519" && $NF=="vps-main" {print; exit}' /root/.ssh/authorized_keys
 }
 
-wizard_offer_reinstall() {
-  # Destructive reinstall is pinned to a reviewed upstream commit.
+wizard_reinstall() {
+  # Destructive reinstall is deliberately separate from the normal install wizard.
   local reinstall_repo="bin456789/reinstall"
   local reinstall_commit="2bcbc96100fe733bf9a16d609f799246f62666e5"
-  local choice virt confirm_word script current_port key
+  local virt confirm_word script current_port key dd_password="" dd_password2=""
   local -a cmd existing_keys
 
-  echo
-  choice="$(wizard_select "系统准备：" \
-    "不重装，直接初始化当前系统（推荐：系统已经是干净 Ubuntu 24.04 时选这个）" \
-    "一键 DD / 重装 Ubuntu 24.04 Minimal（bin456789/reinstall）" \
-    "返回 / 取消本次向导")"
-
-  case "$choice" in
-    1) return 0 ;;
-    3) return 12 ;;
-  esac
-
+  require_root
+  [[ -t 0 ]] || die "系统重装需要交互式终端。"
+  wizard_banner
   echo
   echo "============================================================"
-  echo "                 危险操作：整盘重装"
+  echo "                 系统重装 / 一键 DD"
   echo "============================================================"
-  echo "将调用我们之前用过的：$reinstall_repo"
-  echo "固定上游提交：$reinstall_commit"
-  echo
   echo "目标系统：Ubuntu 24.04 Minimal"
+  echo "上游：$reinstall_repo"
+  echo "固定提交：$reinstall_commit"
+  echo
   echo "警告：重装会清除主硬盘全部数据，包括所有分区。"
   echo "当前 vps-init、3x-ui、Docker、网站、证书等磁盘数据都会被删除。"
-  echo "重启后 SSH 会断开；系统安装完成后，需要重新连接并再次运行 vps-init 一键命令。"
   echo
 
   virt="$(systemd-detect-virt 2>/dev/null || true)"
@@ -201,62 +192,74 @@ wizard_offer_reinstall() {
   esac
 
   read -r -p "确认清空整盘并重装 Ubuntu 24.04 Minimal，请输入大写 DD： " confirm_word
-  [[ "$confirm_word" == "DD" ]] || { echo "未输入 DD，已取消重装，返回安装向导。"; return 0; }
+  [[ "$confirm_word" == "DD" ]] || { echo "未输入 DD，已取消。"; return 0; }
 
   script="/root/reinstall.sh"
-  curl -fL --retry 3 --connect-timeout 10 --max-time 60     -o "$script"     "https://raw.githubusercontent.com/$reinstall_repo/$reinstall_commit/reinstall.sh"
+  curl -fL --retry 3 --connect-timeout 10 --max-time 60 -o "$script" \
+    "https://raw.githubusercontent.com/$reinstall_repo/$reinstall_commit/reinstall.sh"
   chmod 700 "$script"
+
+  # Upstream currently echoes the plaintext password in several summary blocks.
+  # vps-init never needs that behavior, so redact it before execution.
+  sed -i -E 's/echo "Password: \$password"/echo "Password: [hidden]"/g' "$script"
 
   current_port="$(wizard_detect_ssh_port)"
   mapfile -t existing_keys < <(wizard_existing_ed25519_keys || true)
 
-  cmd=(bash "$script" ubuntu 24.04 --minimal --user root)
+  cmd=(bash "$script" ubuntu 24.04 --minimal --user root --ssh-port "$current_port")
   if (( ${#existing_keys[@]} > 0 )); then
     echo
     echo "检测到当前 root 的 ${#existing_keys[@]} 把 ED25519 公钥。DD 后会全部保留；vps-main 会优先传入。"
-    # The pinned bin456789/reinstall commit appends repeated --ssh-key values
-    # into the target authorized_keys, so pass every unique ED25519 key.
     for key in "${existing_keys[@]}"; do
       cmd+=(--ssh-key "$key")
     done
-    cmd+=(--ssh-port "$current_port")
+    # Password login is not needed when an SSH key is available. Still pass a
+    # strong random value so upstream never opens an interactive plaintext prompt.
+    dd_password="$(random_b64url 40 32)"
+    cmd+=(--password "$dd_password")
   else
     echo
     echo "当前没有检测到 root 的 ED25519 authorized key。"
-    echo "上游 reinstall 脚本会在需要时要求你设置重装后的 SSH 登录凭据。"
+    echo "请设置重装后的临时 root SSH 密码（输入不会显示）："
+    while true; do
+      read -r -s -p "密码: " dd_password; echo
+      [[ ${#dd_password} -ge 10 ]] || { echo "密码至少 10 个字符。"; continue; }
+      read -r -s -p "再次输入: " dd_password2; echo
+      [[ "$dd_password" == "$dd_password2" ]] || { echo "两次密码不一致，请重新输入。"; continue; }
+      break
+    done
+    cmd+=(--password "$dd_password")
   fi
 
   echo
-  echo "开始准备一键重装（此阶段只写入下一次启动的重装环境；真正清盘在 reboot 后开始）..."
+  echo "开始准备一键重装（真正清盘会在 reboot 后开始）..."
   "${cmd[@]}"
+  unset dd_password dd_password2
 
   echo
   echo "============================================================"
   echo "Ubuntu 24.04 Minimal 重装已经准备好。"
   echo
-  echo "在重启前如果改变主意，可运行："
+  echo "重启前如果改变主意，可运行："
   echo "  bash /root/reinstall.sh reset"
   echo
-  echo "重启后开始真正重装；SSH 会断开。"
-  echo "系统装好并重新 SSH 登录后，再执行："
-  echo
+  echo "系统装好重新 SSH 登录后，直接运行："
   echo "  bash <(curl -fsSL https://raw.githubusercontent.com/bluepanda001/vps-init/main/install.sh)"
   echo
-  echo "第二次进入向导时选择：不重装，直接初始化当前系统。"
+  echo "新系统会直接进入安装方式 / Profile 选择，不会再次询问是否 DD。"
   echo "============================================================"
   echo
 
   if wizard_yesno "现在立即 reboot 开始重装？" y; then
     sync
-    reboot
-    # reboot(8) may return before systemd actually tears down this SSH
-    # session. Propagate a special status so a parent menu does not print
-    # a misleading "按 Enter 返回菜单" while the machine is going down.
-    return 42
+    systemctl reboot
+    # A requested reboot is a successful terminal action; do not propagate a
+    # synthetic non-zero status that the global ERR trap could report as failure.
+    exit 0
   fi
 
   echo "已暂缓 reboot。准备好后手动执行：reboot"
-  return 12
+  return 0
 }
 
 wizard_shell_quote_value() {
@@ -368,21 +371,13 @@ wizard_collect() {
   wizard_banner
   echo
 
-  # First decision: optionally reinstall to a known-clean Ubuntu before
-  # collecting any VPS Init settings. Major choice screens include an explicit
-  # way back so an accidental number does not force the rest of the wizard.
-  local prep_rc=0 mode_choice profile_choice current_port custom
+  # Normal installation starts directly with install mode/profile. Destructive
+  # reinstall is intentionally a separate `vps-init reinstall` workflow.
+  local mode_choice profile_choice current_port custom
   while true; do
-    prep_rc=0
-    wizard_offer_reinstall || prep_rc=$?
-    (( prep_rc == 42 )) && return 42
-    (( prep_rc == 12 )) && return 12
-
     mode_choice="$(wizard_select "安装方式：" \
       "快速安装（推荐：沿用当前 SSH 端口，只问必要项目）" \
-      "自定义安装（可改端口/路径/订阅端口/Docker 等）" \
-      "返回系统准备")"
-    [[ "$mode_choice" == 3 ]] && continue
+      "自定义安装（可改端口/路径/订阅端口/Docker 等）")"
     custom="false"
     [[ "$mode_choice" == 2 ]] && custom="true"
 
