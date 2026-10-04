@@ -1,5 +1,11 @@
 # Release Notes
 
+## v1.3.3
+
+- Cloudflare Token 输入步骤现在直接显示可点击/复制的 API Token 创建地址：`https://dash.cloudflare.com/profile/api-tokens`。
+- 同屏提示使用 `Edit zone DNS` 模板，并把 Zone Resources 限定到当前根域名。
+- 明确列出脚本需要的权限：`Zone / Zone / Read` 与 `Zone / DNS / Edit`，减少来回查找和权限配错。
+
 ## v1.3.2
 
 - SSH 第二终端验证改为原地循环，不再使用容易误操作的单次 `[y/N]`；未测试、测试失败或输错选项都不会退出整个部署。
