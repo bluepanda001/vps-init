@@ -1,5 +1,12 @@
 # Release Notes
 
+## v1.3.2
+
+- SSH 第二终端验证改为原地循环，不再使用容易误操作的单次 `[y/N]`；未测试、测试失败或输错选项都不会退出整个部署。
+- SSH 验证界面改为编号选择：1=已验证成功并继续切换 key-only；2=继续等待测试；3=重新显示测试说明；只有用户主动 Ctrl+C 才中止。
+- 保持安全边界不变：在明确确认第二个 SSH 会话可以使用 ED25519 密钥登录前，项目不会关闭全局 PasswordAuthentication / KbdInteractiveAuthentication。
+- 其余可恢复输入（菜单、域名格式、面板密码二次确认、Cloudflare Token）继续保持原地重试，不要求重新填写前面的部署参数。
+
 ## v1.3.1
 
 - 修复一键 DD 交互：正常 `vps-init wizard` 不再先询问是否重装，DD 改为独立 `vps-init reinstall` 和主菜单入口；DD 完重新进系统后直接看到安装方式 / Profile。

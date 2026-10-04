@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.3.1 在 Lucky-first Web Gateway 基础上新增 `Lucky Web Only`：只要 Base + Docker + Lucky + Cloudflare wildcard SSL，不安装任何节点；同时把一键 DD 从正常安装向导中完全拆开。
+V1.3.2 在 `Lucky Web Only` 与独立 DD 流程基础上继续优化交互：SSH 第二终端验证现在原地等待/重试，不会因为一次选错或尚未测试就让整套部署从头再填。
 
 ## 一键安装
 
@@ -286,7 +286,7 @@ Get-Content "$env:USERPROFILE\.ssh\vps-main-ed25519.pub" | Set-Clipboard
 
 以后新 VPS **不再重新生成私钥**，始终粘贴同一个 `vps-main-ed25519.pub`。Netcatty 中把无 `.pub` 后缀的私钥导入 Keychain，Label 固定为 `vps-main`；然后每台 VPS 新建一个独立 Identity，Identity 名称建议直接使用 `SERVER_NAME`，用户名 `root`，密钥选择 `vps-main`。主机认证选择该 Identity，不再使用依赖 Windows 用户目录路径的“本地密钥”。
 
-SSH 加固仍分两阶段：先把公钥安装到 `/root/.ssh/authorized_keys`，并启用 **root 公钥登录**，再要求保持当前会话、用第二个终端实际验证；确认成功后才关闭全局 PasswordAuthentication / KbdInteractive。最终基线是 `PermitRootLogin prohibit-password` + `PubkeyAuthentication yes`，即 root 可以用密钥直接登录，但不能用密码登录。
+SSH 加固仍分两阶段：先把公钥安装到 `/root/.ssh/authorized_keys`，并启用 **root 公钥登录**，再要求保持当前会话、用第二个终端实际验证。V1.3.2 起这一步采用编号式原地循环：尚未测试、测试失败或输错选项都只停留在当前步骤，不会退出整个部署；只有明确选择“验证成功”后才关闭全局 PasswordAuthentication / KbdInteractive。最终基线是 `PermitRootLogin prohibit-password` + `PubkeyAuthentication yes`，即 root 可以用密钥直接登录，但不能用密码登录。
 
 Ubuntu 24.04 的 `ssh.socket` 在修改端口时会执行 `daemon-reload` + 重启 socket，并用 `ss` 验证目标端口真的在监听。项目 SSH drop-in 使用 `00-00-vps-init.conf`，并验证 `sshd -T` 的实际值，避免云镜像里的 `00-hardening.conf` 等更早规则把 `PermitRootLogin` 或 `PubkeyAuthentication` 覆盖成 `no`。只要 SSH 端口和上次验证值不同，就强制重新做第二终端登录验证。
 
