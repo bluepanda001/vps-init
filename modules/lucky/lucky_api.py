@@ -99,7 +99,7 @@ def configure_web_only(base,token,lucky_domain,landing_port):
     name='vps-init-web-only'
     rows=request(base,'GET','/api/webservice/rules',token).get('ruleList') or []
     for row in rows:
-      if isinstance(row,dict) and row.get('RuleName')==name and row.get('RuleKey'):
+      if isinstance(row,dict) and row.get('RuleName') in ('vps-init-web-only','vps-init-https') and row.get('RuleKey'):
         request(base,'DELETE','/api/webservice/rule/'+str(row['RuleKey']),token)
     body={
       'RuleName':name,'RuleKey':'','DiaglogShowMode':'simple','Enable':True,
@@ -126,7 +126,7 @@ def configure_rule(base,token,panel_domain,node_domain,panel_port,sub_port,landi
     name='vps-init-https'
     rows=request(base,'GET','/api/webservice/rules',token).get('ruleList') or []
     for row in rows:
-      if isinstance(row,dict) and row.get('RuleName')==name and row.get('RuleKey'):
+      if isinstance(row,dict) and row.get('RuleName') in ('vps-init-web-only','vps-init-https') and row.get('RuleKey'):
         request(base,'DELETE','/api/webservice/rule/'+str(row['RuleKey']),token)
     body={
       'RuleName':name,'RuleKey':'','DiaglogShowMode':'simple','Enable':True,
