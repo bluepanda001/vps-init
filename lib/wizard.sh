@@ -235,7 +235,7 @@ wizard_reinstall() {
 
   echo
   echo "开始准备一键重装（真正清盘会在 reboot 后开始）..."
-  "${cmd[@]}"
+  "${cmd[@]}" 2>&1 | sed -E 's/^([[:space:]]*(Password|密码)[[:space:]]*:).*/\1 [hidden]/I'
   unset dd_password dd_password2
 
   echo
@@ -500,12 +500,12 @@ wizard_collect() {
     else
       echo "3x-ui Credentials : 保持现有 / 新部署自动生成"
     fi
-    if [[ "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
-      if [[ -n "${W_LUCKY_USERNAME_INPUT:-}${W_LUCKY_PASSWORD_INPUT:-}" ]]; then
-        echo "Lucky Credentials : 用户自定义"
-      else
-        echo "Lucky Credentials : 保持现有 / 新部署自动生成"
-      fi
+  fi
+  if [[ "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
+    if [[ -n "${W_LUCKY_USERNAME_INPUT:-}${W_LUCKY_PASSWORD_INPUT:-}" ]]; then
+      echo "Lucky Credentials : 用户自定义"
+    else
+      echo "Lucky Credentials : 保持现有 / 新部署自动生成"
     fi
   fi
   if [[ "$W_PROFILE" == "lucky-web" ]]; then
@@ -514,7 +514,7 @@ wizard_collect() {
     echo "Node / 3x-ui      : NOT INSTALLED"
   fi
   echo "Docker            : $W_ENABLE_DOCKER"
-  if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
+  if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
     echo "Cloudflare CDN WS : $W_ENABLE_CF_WS"
   fi
   echo "------------------------------------------"
