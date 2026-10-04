@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.3.8
+
+- 修复 Lucky Web Only 验收：安全入口生效后，Lucky 把 `/version` 挪到 `/zhg/version`，根路径会返回 404。验收和后续改密等待改为请求安全入口下的版本接口，避免一次成功的部署被这一项打回。
+
 ## v1.3.7
 
 - 修复 Lucky 证书重跑：已有 `vps-init-wildcard` 备注时不再重复上传同名证书。Lucky 会拒绝重复备注（`CertificateRemarkNameConflict`），v1.3.6 因此在第二次部署或切到 Lucky Web Only 时退出。

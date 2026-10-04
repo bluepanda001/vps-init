@@ -63,9 +63,13 @@ credential_change_xui() {
 }
 
 credential_wait_lucky() {
-  local i
+  local i safe="${LUCKY_SAFE_URL:-}"
+  safe="${safe#/}"
   systemctl start lucky
   for i in $(seq 1 20); do
+    if [[ -n "$safe" ]] && curl -fsS --max-time 2 "http://127.0.0.1:16601/${safe}/version" >/dev/null 2>&1; then
+      return 0
+    fi
     curl -fsS --max-time 2 http://127.0.0.1:16601/version >/dev/null 2>&1 && return 0
     sleep 1
   done
