@@ -71,6 +71,7 @@ wizard_collect_admin_credentials() {
   echo
   echo "面板管理账号（不会写入普通 config.env；只保存在 root-only state/secrets）："
   local u p p2
+  if [[ "$W_PROFILE" != "lucky-web" ]]; then
   while true; do
     if [[ -n "${XUI_USERNAME:-}" ]]; then
       read -r -p "3x-ui 用户名（留空=保持当前 ${XUI_USERNAME}）: " u
@@ -91,8 +92,9 @@ wizard_collect_admin_credentials() {
   done
   W_XUI_USERNAME_INPUT="$u"
   W_XUI_PASSWORD_INPUT="$p"
+  fi
 
-  if [[ "$W_PROFILE" == "lucky-reality" ]]; then
+  if [[ "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
     echo
     while true; do
       if [[ -n "${LUCKY_USERNAME:-}" ]]; then
@@ -387,17 +389,19 @@ wizard_collect() {
     [[ "$mode_choice" == 2 ]] && custom="true"
 
     profile_choice="$(wizard_select "请选择部署模式：" \
-      "Base Only - 系统初始化/安全/BBR/Swap，不安装 3x-ui" \
+      "Base Only - 仅系统初始化/安全/BBR/Swap，不安装节点或 Web Gateway" \
+      "Lucky Web Only - Base + Docker + Lucky + Cloudflare 域名/SSL，不安装任何节点（推荐 Web 服务器）" \
       "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
-      "Lucky + Reality - 推荐：图形化 Web Gateway + Reality，共用公网 443，需要 Cloudflare 域名" \
+      "Lucky + Reality - 图形化 Web Gateway + Reality，共用公网 443，需要 Cloudflare 域名" \
       "Nginx + Reality - 轻量/高级：纯 Nginx 配置 + Reality，需要 Cloudflare 域名" \
       "返回安装方式")"
-    [[ "$profile_choice" == 5 ]] && continue
+    [[ "$profile_choice" == 6 ]] && continue
     case "$profile_choice" in
       1) W_PROFILE="base-only" ;;
-      2) W_PROFILE="reality-only" ;;
-      3) W_PROFILE="lucky-reality" ;;
-      4) W_PROFILE="nginx-reality" ;;
+      2) W_PROFILE="lucky-web" ;;
+      3) W_PROFILE="reality-only" ;;
+      4) W_PROFILE="lucky-reality" ;;
+      5) W_PROFILE="nginx-reality" ;;
     esac
     break
   done
@@ -434,7 +438,7 @@ wizard_collect() {
   wizard_collect_admin_credentials
 
   W_ROOT_DOMAIN=""; W_LE_EMAIL=""
-  if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
+  if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
     echo
     while [[ -z "$W_ROOT_DOMAIN" ]]; do
       W_ROOT_DOMAIN="$(wizard_prompt_default "Cloudflare 根域名（例如 example.com）" "")"
@@ -444,7 +448,7 @@ wizard_collect() {
   fi
 
   W_REALITY_TARGET_MODE="auto"; W_REALITY_TARGET=""
-  if [[ "$W_PROFILE" != "base-only" && "$custom" == true ]]; then
+  if [[ "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" && "$custom" == true ]]; then
     local target_choice
     target_choice="$(wizard_select "Reality Target：" "自动检测并推荐（推荐）" "手动填写")"
     if [[ "$target_choice" == 2 ]]; then
@@ -457,6 +461,7 @@ wizard_collect() {
   W_SUB_PATH="/zhg/"
   W_SUBSCRIPTION_PORT="2096"
   W_ENABLE_DOCKER="false"
+  [[ "$W_PROFILE" == "lucky-web" ]] && W_ENABLE_DOCKER="true"
   W_ENABLE_CF_WS="false"
   if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
     W_ENABLE_CF_WS="true"
@@ -466,7 +471,7 @@ wizard_collect() {
       fi
     fi
   fi
-  if [[ "$custom" == true && "$W_PROFILE" != "base-only" ]]; then
+  if [[ "$custom" == true && "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" ]]; then
     W_PANEL_PATH="$(normalize_path "$(wizard_prompt_default "3x-ui 面板 URI Path" "/zhg/")")"
     local sub_input
     sub_input="$(wizard_prompt_default "订阅 URI Path" "/zhg/")"
@@ -474,7 +479,7 @@ wizard_collect() {
     W_SUBSCRIPTION_PORT="$(wizard_prompt_default "3x-ui Subscription 内部/直连端口" "2096")"
     [[ "$W_SUBSCRIPTION_PORT" =~ ^[0-9]+$ ]] && ((W_SUBSCRIPTION_PORT>=1 && W_SUBSCRIPTION_PORT<=65535)) || die "订阅端口无效。"
   fi
-  if [[ "$custom" == true ]]; then
+  if [[ "$custom" == true && "$W_PROFILE" != "lucky-web" ]]; then
     if wizard_yesno "同时安装 Docker Engine/Compose？" n; then W_ENABLE_DOCKER="true"; fi
   fi
 
@@ -484,7 +489,7 @@ wizard_collect() {
   echo "IPv4              : $W_SERVER_IP"
   echo "SSH Port          : $W_SSH_PORT"
   [[ -n "$W_ROOT_DOMAIN" ]] && echo "Root Domain       : $W_ROOT_DOMAIN"
-  if [[ "$W_PROFILE" != "base-only" ]]; then
+  if [[ "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" ]]; then
     echo "Panel URI         : $W_PANEL_PATH"
     echo "Subscription URI  : $W_SUB_PATH"
     echo "Subscription Port : $W_SUBSCRIPTION_PORT"
@@ -495,7 +500,7 @@ wizard_collect() {
     else
       echo "3x-ui Credentials : 保持现有 / 新部署自动生成"
     fi
-    if [[ "$W_PROFILE" == "lucky-reality" ]]; then
+    if [[ "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
       if [[ -n "${W_LUCKY_USERNAME_INPUT:-}${W_LUCKY_PASSWORD_INPUT:-}" ]]; then
         echo "Lucky Credentials : 用户自定义"
       else
@@ -503,8 +508,13 @@ wizard_collect() {
       fi
     fi
   fi
+  if [[ "$W_PROFILE" == "lucky-web" ]]; then
+    echo "Web Gateway       : Lucky direct :443"
+    echo "Lucky Domain      : lucky.${W_ROOT_DOMAIN}"
+    echo "Node / 3x-ui      : NOT INSTALLED"
+  fi
   echo "Docker            : $W_ENABLE_DOCKER"
-  if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
+  if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
     echo "Cloudflare CDN WS : $W_ENABLE_CF_WS"
   fi
   echo "------------------------------------------"
