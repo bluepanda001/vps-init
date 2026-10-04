@@ -152,19 +152,37 @@ EOF2
 
   log_warn "公钥已安装，并已启用 root 公钥登录；当前会话不要关闭。全局 PasswordAuthentication/KbdInteractive 尚未由项目关闭。"
   if [[ -t 0 ]]; then
-    echo
-    echo "请保持当前 SSH 会话不要关闭，再开一个新终端测试："
-    if [[ -n "${SSH_IDENTITY_HINT:-}" ]]; then
-      echo "  Windows PowerShell: ssh -i \"\$env:USERPROFILE\\.ssh\\${SSH_IDENTITY_HINT}\" -p ${SSH_PORT} root@${SERVER_IP}"
-    else
-      echo "  ssh -p ${SSH_PORT} root@${SERVER_IP}"
-      echo "  如果密钥不是默认文件名，请额外加：-i <你的私钥路径>"
-    fi
-    echo "Netcatty 也可以新建该 VPS 的专属 Identity：root + vps-main，然后用新窗口测试。"
-    echo "确认新会话可以用 ED25519 密钥登录后，再回来继续。"
-    if ! confirm "新会话已经用密钥成功登录，是否切换为 key-only root SSH？" n; then
-      die "尚未确认密钥登录。当前会话不要关闭；确认后重新运行即可。"
-    fi
+    local verify_choice=""
+    while true; do
+      echo
+      echo "请保持当前 SSH 会话不要关闭，再开一个新终端测试："
+      if [[ -n "${SSH_IDENTITY_HINT:-}" ]]; then
+        echo "  Windows PowerShell: ssh -i \"\$env:USERPROFILE\\.ssh\\${SSH_IDENTITY_HINT}\" -p ${SSH_PORT} root@${SERVER_IP}"
+      else
+        echo "  ssh -p ${SSH_PORT} root@${SERVER_IP}"
+        echo "  如果密钥不是默认文件名，请额外加：-i <你的私钥路径>"
+      fi
+      echo "Netcatty 也可以新建该 VPS 的专属 Identity：root + vps-main，然后用新窗口测试。"
+      echo
+      echo "SSH 密钥验证："
+      echo "  1. 新会话已经用密钥登录成功 → 继续并切换为 key-only"
+      echo "  2. 还没测试 / 测试失败       → 保持当前状态，继续等待"
+      echo "  3. 重新显示测试说明"
+      echo "  Ctrl+C                       → 主动中止本次部署"
+      read -r -p "请选择 [1-3]: " verify_choice
+      case "$verify_choice" in
+        1) break ;;
+        2)
+          echo "好的，当前会话和密码登录策略都保持不变。请在另一个窗口继续测试；这里不会退出部署。"
+          ;;
+        3)
+          echo "已重新显示测试命令；测试成功后选 1。"
+          ;;
+        *)
+          echo "输入无效，请输入 1、2 或 3；不会退出当前部署。"
+          ;;
+      esac
+    done
   else
     die "非交互执行无法确认第二个 SSH 会话。公钥已安装并启用 root 公钥登录，但不会自动关闭全局密码策略；请先测试密钥后在交互终端重跑。"
   fi
