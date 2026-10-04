@@ -92,6 +92,60 @@ EOF2
   grep -qi '^passwordauthentication no$' <<<"$effective" || die "PasswordAuthentication 未成功关闭。"
 }
 
+arm_ssh_stage_rollback() {
+  local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf dir script previous unit
+  dir="${BACKUP_DIR}/ssh-stage-rollback"
+  mkdir -p "$dir"
+  previous="$dir/00-00-vps-init.conf.previous"
+  script="$dir/rollback.sh"
+  SSH_ROLLBACK_MARKER="$dir/fired"
+  unit="vps-init-ssh-rollback-$(date +%s)-$"
+  SSH_ROLLBACK_UNIT="$unit"
+
+  if [[ -f "$dropin" ]]; then
+    cp -a "$dropin" "$previous"
+    printf 'present\n' > "$dir/mode"
+  else
+    rm -f "$previous"
+    printf 'absent\n' > "$dir/mode"
+  fi
+
+  cat > "$script" <<EOF2
+#!/usr/bin/env bash
+set -Eeuo pipefail
+dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf
+if [[ "\$(cat "$dir/mode")" == present ]]; then
+  install -m 600 "$previous" "\$dropin"
+else
+  rm -f "\$dropin"
+fi
+sshd -t
+if systemctl cat ssh.socket >/dev/null 2>&1; then
+  systemctl daemon-reload
+  systemctl restart ssh.socket
+  systemctl reload ssh.service 2>/dev/null || true
+else
+  systemctl reload ssh.service 2>/dev/null || systemctl reload sshd.service
+fi
+touch "$SSH_ROLLBACK_MARKER"
+EOF2
+  chmod 700 "$script"
+  systemd-run --quiet --unit="$unit" --on-active=10m /bin/bash "$script" >/dev/null ||
+    die "无法创建 SSH 10 分钟自动回滚任务；为避免锁机，不继续修改 SSH。"
+  log_warn "SSH Stage 1 已启用 10 分钟自动回滚保护；验证成功后会自动取消。"
+}
+
+cancel_ssh_stage_rollback() {
+  [[ -n "${SSH_ROLLBACK_UNIT:-}" ]] || return 0
+  systemctl stop "${SSH_ROLLBACK_UNIT}.timer" >/dev/null 2>&1 || true
+  systemctl stop "${SSH_ROLLBACK_UNIT}.service" >/dev/null 2>&1 || true
+  systemctl reset-failed "${SSH_ROLLBACK_UNIT}.service" >/dev/null 2>&1 || true
+}
+
+ssh_stage_rollback_fired() {
+  [[ -n "${SSH_ROLLBACK_MARKER:-}" && -e "$SSH_ROLLBACK_MARKER" ]]
+}
+
 show_netcatty_identity_hint() {
   local identity_name
   identity_name="${SERVER_NAME:-${PROVIDER:-vps}-${SERVER_IP}}"
@@ -160,9 +214,11 @@ EOF2
   # Preserve the provider/current authentication policy until the second
   # session proves that the new key works.
   capture_ssh_baseline
+  arm_ssh_stage_rollback
   write_ssh_stage_config
 
   log_warn "公钥已安装，并已启用 root 公钥登录；当前会话不要关闭。验证前会保留原有 PasswordAuthentication/KbdInteractiveAuthentication 策略。"
+  log_warn "如果当前会话意外中断，Stage 1 会在 10 分钟后自动恢复到修改前的 SSH 配置。"
   if [[ -t 0 ]]; then
     local verify_choice=""
     while true; do
@@ -183,7 +239,15 @@ EOF2
       echo "  Ctrl+C                       → 主动中止本次部署"
       read -r -p "请选择 [1-3]: " verify_choice
       case "$verify_choice" in
-        1) break ;;
+        1)
+          if ssh_stage_rollback_fired; then
+            log_warn "10 分钟自动回滚已经执行；重新进入 Stage 1 后请再测试一次新 SSH 会话。"
+            arm_ssh_stage_rollback
+            write_ssh_stage_config
+            continue
+          fi
+          break
+          ;;
         2)
           echo "好的，当前会话和密码登录策略都保持不变。请在另一个窗口继续测试；这里不会退出部署。"
           ;;
@@ -200,6 +264,7 @@ EOF2
   fi
 
   write_ssh_final_config
+  cancel_ssh_stage_rollback
   state_set SSH_KEY_VERIFIED true
   state_set SSH_VERIFIED_PORT "$SSH_PORT"
   log_ok "SSH 密钥登录与端口 ${SSH_PORT} 已验证，root 密码/键盘交互登录已关闭。"
