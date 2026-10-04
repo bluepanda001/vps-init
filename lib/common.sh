@@ -210,7 +210,6 @@ resolve_auto_settings() {
 
   if profile_has_domain; then
     LUCKY_DOMAIN="${LUCKY_DOMAIN_OVERRIDE:-lucky.${ROOT_DOMAIN}}"
-    LUCKY_DOMAIN="${LUCKY_DOMAIN_OVERRIDE:-lucky.${ROOT_DOMAIN}}"
     PANEL_DOMAIN="${PANEL_DOMAIN_OVERRIDE:-xui.${ROOT_DOMAIN}}"
     NODE_DOMAIN="${NODE_DOMAIN_OVERRIDE:-node.${ROOT_DOMAIN}}"
   else
