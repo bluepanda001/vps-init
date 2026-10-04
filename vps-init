@@ -54,6 +54,7 @@ VPS Init ${VPSINIT_VERSION}
   vps-init gateway              # 查看当前 Web Gateway / Lucky 管理入口
   vps-init reinstall            # 单独进入系统重装 / 一键 DD
   vps-init update
+  vps-init upgrade-system        # 手动执行完整 apt upgrade
   vps-init logs
 TXT
 }
@@ -444,10 +445,11 @@ menu() {
  10. 查看服务日志
  11. 重新运行核心安装向导
  12. 系统重装 / 一键 DD
+ 13. 系统完整升级（apt upgrade）
   0. 退出
 TXT
     local n
-    read -r -p "请选择 [0-12]: " n
+    read -r -p "请选择 [0-13]: " n
     case "$n" in
       1)
         if [[ -f "$DEFAULT_CFG" ]]; then
@@ -481,6 +483,7 @@ TXT
         (( wizard_rc == 42 )) && exit 0
         ;;
       12) "$ROOT_DIR/vps-init" reinstall; exit 0 ;;
+      13) core_system_upgrade || true ;;
       0) exit 0 ;;
       *) echo "输入无效。" ;;
     esac
@@ -509,6 +512,7 @@ case "$cmd" in
   gateway) require_root; show_gateway_summary "$DEFAULT_CFG"; exit 0 ;;
   logs) require_root; show_logs; exit 0 ;;
   update) require_root; update_self; exit 0 ;;
+  upgrade-system) require_root; core_system_upgrade; exit 0 ;;
   status) require_root; show_status_summary "$cfg"; exit 0 ;;
   info) require_root; show_info_summary "$cfg"; exit 0 ;;
   apply|verify|preflight) ;;
