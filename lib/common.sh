@@ -258,6 +258,25 @@ PY2
   export SUBSCRIPTION_PORT
 }
 
+lucky_local_version_ok() {
+  # After SetSafeURL, Lucky serves /version and /api under /<safe>, and the root paths 404.
+  local timeout="${1:-5}" safe="${LUCKY_SAFE_URL:-}"
+  safe="${safe#/}"
+  if [[ -n "$safe" ]] && curl -fsS --max-time "$timeout" -o /dev/null "http://127.0.0.1:16601/${safe}/version"; then
+    return 0
+  fi
+  curl -fsS --max-time "$timeout" -o /dev/null "http://127.0.0.1:16601/version"
+}
+
+lucky_api() {
+  local base="http://127.0.0.1:16601" safe="${LUCKY_SAFE_URL:-}"
+  safe="${safe#/}"
+  if [[ -n "$safe" ]] && curl -fsS --max-time 2 -o /dev/null "${base}/${safe}/version"; then
+    base="${base}/${safe}"
+  fi
+  python3 "$ROOT_DIR/modules/lucky/lucky_api.py" --base "$base" "$@"
+}
+
 set_config_defaults() {
   PROFILE="reality-only"
   PROVIDER=""

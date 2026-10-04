@@ -310,10 +310,16 @@ if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
 fi
 grep -q 'cert_has_ip_san "$cert" "$SERVER_IP"' modules/subscription/apply.sh
 grep -q 'cert_key_match "$cert" "$key"' modules/subscription/apply.sh
-[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.8" ]]
+[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.9" ]]
 grep -q 'CertificateRemarkNameConflict' modules/lucky/lucky_api.py
-grep -q '127.0.0.1:16601/${safe}/version' verify/verify.sh
-grep -q '16601/${safe}/version' lib/credentials.sh
+grep -q '16601/${safe}/version' lib/common.sh
+grep -q 'lucky_api() {' lib/common.sh
+grep -q 'lucky_local_version_ok 3 || die "Lucky 后台未启动。"' modules/lucky/apply.sh
+grep -q 'lucky_api --user' modules/lucky/apply.sh
+if grep -q 'http://127.0.0.1:16601/version' modules/lucky/apply.sh; then
+  echo 'FAIL: Lucky startup must follow the safe URL when it is already set' >&2
+  exit 1
+fi
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh

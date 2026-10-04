@@ -63,14 +63,10 @@ credential_change_xui() {
 }
 
 credential_wait_lucky() {
-  local i safe="${LUCKY_SAFE_URL:-}"
-  safe="${safe#/}"
+  local i
   systemctl start lucky
   for i in $(seq 1 20); do
-    if [[ -n "$safe" ]] && curl -fsS --max-time 2 "http://127.0.0.1:16601/${safe}/version" >/dev/null 2>&1; then
-      return 0
-    fi
-    curl -fsS --max-time 2 http://127.0.0.1:16601/version >/dev/null 2>&1 && return 0
+    lucky_local_version_ok 2 && return 0
     sleep 1
   done
   return 1
@@ -92,24 +88,24 @@ credential_change_lucky() {
   new_user="$(credential_prompt_username "新用户名，直接回车保持当前" "$current_user")"
   new_password="$(credential_prompt_secret_twice "新密码")"
 
-  if [[ -n "$current_password" ]] && python3 "$ROOT_DIR/modules/lucky/lucky_api.py"       --user "$current_user" --password "$current_password" status >/dev/null 2>&1; then
+  if [[ -n "$current_password" ]] && lucky_api       --user "$current_user" --password "$current_password" status >/dev/null 2>&1; then
     authenticated=true
   fi
 
   if [[ "$authenticated" == true ]]; then
-    python3 "$ROOT_DIR/modules/lucky/lucky_api.py"       --user "$current_user" --password "$current_password" set-admin       --new-user "$new_user" --new-password "$new_password" >/dev/null ||
+    lucky_api       --user "$current_user" --password "$current_password" set-admin       --new-user "$new_user" --new-password "$new_password" >/dev/null ||
       die "Lucky 修改管理账号失败。"
   else
     log_warn "保存的 Lucky 凭据无法认证；使用 Lucky 官方本机恢复命令后写入新凭据。"
     /opt/lucky/lucky -rUnlock >/dev/null 2>&1 || true
     /opt/lucky/lucky -rResetUser >/dev/null || die "Lucky 官方管理凭据恢复失败。"
     sleep 1
-    python3 "$ROOT_DIR/modules/lucky/lucky_api.py"       --user "666" --password "666" set-admin       --new-user "$new_user" --new-password "$new_password" >/dev/null ||
+    lucky_api       --user "666" --password "666" set-admin       --new-user "$new_user" --new-password "$new_password" >/dev/null ||
       die "Lucky 恢复后写入新管理凭据失败。"
   fi
 
   sleep 1
-  python3 "$ROOT_DIR/modules/lucky/lucky_api.py"     --user "$new_user" --password "$new_password" status >/dev/null ||
+  lucky_api     --user "$new_user" --password "$new_password" status >/dev/null ||
     die "Lucky 新凭据验证失败。"
 
   LUCKY_USERNAME="$new_user"

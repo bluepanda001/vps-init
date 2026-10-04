@@ -61,15 +61,7 @@ verify_lucky_safe_url() {
 }
 
 verify_lucky_local_version() {
-  # Lucky moves /version under the safe entry once SetSafeURL is applied.
-  # The unprefixed URL then 404s, so acceptance must use the same entry as the admin UI.
-  local safe="${LUCKY_SAFE_URL:-zhg}"
-  safe="${safe#/}"
-  if [[ -n "$safe" ]]; then
-    curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:16601/${safe}/version"
-  else
-    curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:16601/version"
-  fi
+  lucky_local_version_ok 5
 }
 
 verify_mihomo_public_endpoint() {
