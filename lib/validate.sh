@@ -46,7 +46,7 @@ validate_config() {
 
   case "$ENABLE_DOCKER" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) die "ENABLE_DOCKER 只能是 true/false。" ;; esac
   case "$ENABLE_CF_WS" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) die "ENABLE_CF_WS 只能是 true/false。" ;; esac
-  if is_true "$ENABLE_CF_WS" && ! profile_has_domain; then
-    die "ENABLE_CF_WS=true 需要 nginx-reality 或 lucky-reality 域名 Profile。"
+  if is_true "$ENABLE_CF_WS" && ! profile_has_xui; then
+    die "ENABLE_CF_WS=true 只适用于带 3x-ui 的域名 Reality Profile。"
   fi
 }
