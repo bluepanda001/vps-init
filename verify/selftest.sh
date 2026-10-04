@@ -289,7 +289,13 @@ grep -q '检测到 Lucky 初始默认凭据' modules/lucky/apply.sh
 grep -q -- '--user "666" --password "666" status' modules/lucky/apply.sh
 grep -q 'Runtime -rResetUser is only a last-resort recovery path' modules/lucky/apply.sh
 grep -q 'for _ in $(seq 1 10)' modules/lucky/apply.sh
-[[ "$(tr -d '[:space:]' < VERSION)" == "1.3.4" ]]
+grep -q 'LUCKY_SAFE_URL="${LUCKY_SAFE_URL:-zhg}"' modules/lucky/apply.sh
+grep -q -- '-setconf -key SetSafeURL -value "$LUCKY_SAFE_URL"' modules/lucky/apply.sh
+grep -q 'secret_set LUCKY_SAFE_URL' modules/lucky/apply.sh
+grep -q 'secret_line "安全入口" LUCKY_SAFE_URL' vps-init
+grep -q 'Lucky SafeURL' verify/verify.sh
+grep -q 'https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}' vps-init
+[[ "$(tr -d '[:space:]' < VERSION)" == "1.3.5" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh

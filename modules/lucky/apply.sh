@@ -58,10 +58,14 @@ UNIT
   local requested_lucky_username="${VPSINIT_LUCKY_USERNAME_INPUT:-}"
   local requested_lucky_password="${VPSINIT_LUCKY_PASSWORD_INPUT:-}"
   state_load
+  LUCKY_SAFE_URL="${LUCKY_SAFE_URL:-zhg}"
+  LUCKY_SAFE_URL="${LUCKY_SAFE_URL#/}"
+  [[ "$LUCKY_SAFE_URL" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die "Lucky 安全入口只能包含字母、数字、_、-，长度 1-64。"
   LUCKY_USERNAME="${requested_lucky_username:-${LUCKY_USERNAME:-lucky_$(random_hex 3)}}"
   LUCKY_PASSWORD="${requested_lucky_password:-${LUCKY_PASSWORD:-$(random_b64url 36 28)}}"
   state_set LUCKY_USERNAME "$LUCKY_USERNAME"
   state_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
+  state_set LUCKY_SAFE_URL "$LUCKY_SAFE_URL"
 
   # Lucky 2.27.2 fresh installs use the documented default 666:666.
   # First try the desired persisted credentials; if they are not active yet,
@@ -107,7 +111,8 @@ UNIT
     die "Lucky 项目管理凭据验证失败。"
 
   secret_set LUCKY_USERNAME "$LUCKY_USERNAME"; secret_set LUCKY_PASSWORD "$LUCKY_PASSWORD"
-  secret_set LUCKY_LOCAL_URL "http://127.0.0.1:16601"
+  secret_set LUCKY_SAFE_URL "$LUCKY_SAFE_URL"
+  secret_set LUCKY_LOCAL_URL "http://127.0.0.1:16601/${LUCKY_SAFE_URL}"
   secret_set LUCKY_PANEL_SSH_TUNNEL "ssh -L 16601:127.0.0.1:16601 -p ${SSH_PORT} root@${SERVER_IP}"
 
   module_landing_service
@@ -119,7 +124,17 @@ UNIT
     python3 "$ROOT_DIR/modules/lucky/lucky_api.py" --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" configure-web \
       --panel-domain "$PANEL_DOMAIN" --node-domain "$NODE_DOMAIN" --panel-port "$XUI_PANEL_PORT" --sub-port "$SUBSCRIPTION_PORT" --landing-port 18080 >/dev/null
   fi
-  systemctl restart lucky; sleep 2
+  # Apply Lucky SafeURL only after all authenticated loopback API automation
+  # is complete, then restart once. The official CLI normalizes the stored value.
+  systemctl stop lucky
+  /opt/lucky/lucky -setconf -key SetSafeURL -value "$LUCKY_SAFE_URL" -cd /opt/lucky >/dev/null ||
+    die "Lucky 安全入口设置失败。"
+  systemctl start lucky
+  sleep 2
+  local actual_safe_url
+  actual_safe_url="$(/opt/lucky/lucky -baseConfInfo -cd /opt/lucky 2>/dev/null | jq -r '.BaseConfigure.SafeURL // empty' | sed 's#^/##' | tail -1)"
+  [[ "$actual_safe_url" == "$LUCKY_SAFE_URL" ]] ||
+    die "Lucky 安全入口校验失败：期望 ${LUCKY_SAFE_URL}，实际 ${actual_safe_url:-空}。"
 
   if [[ "$(readlink -f "$ROOT_DIR/modules/lucky/sync-cert.sh")" != "$(readlink -f /opt/vps-init/modules/lucky/sync-cert.sh 2>/dev/null || printf /opt/vps-init/modules/lucky/sync-cert.sh)" ]]; then
     install -m 755 "$ROOT_DIR/modules/lucky/sync-cert.sh" /opt/vps-init/modules/lucky/sync-cert.sh
@@ -133,8 +148,8 @@ set -e
 HOOK
   chmod 755 /etc/letsencrypt/renewal-hooks/deploy/90-vps-init-lucky
   if [[ "$PROFILE" == "lucky-web" ]]; then
-    secret_set LUCKY_PUBLIC_URL "https://${LUCKY_DOMAIN}"
-    log_ok "Lucky Web Only 已配置：公网 443 由 Lucky 直接提供 HTTPS；管理域名 https://${LUCKY_DOMAIN}。"
+    secret_set LUCKY_PUBLIC_URL "https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL}"
+    log_ok "Lucky Web Only 已配置：公网 443 由 Lucky 直接提供 HTTPS；管理地址 https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL}。安全入口=${LUCKY_SAFE_URL}。"
   else
     secret_set LUCKY_PUBLIC_URL ""
     secret_set XUI_PUBLIC_URL "https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"

@@ -2,7 +2,7 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
-V1.3.2 在 `Lucky Web Only` 与独立 DD 流程基础上继续优化交互：SSH 第二终端验证现在原地等待/重试，不会因为一次选错或尚未测试就让整套部署从头再填。
+V1.3.5 默认把 Lucky 后台安全入口设置为 `zhg`，并把这个路径纳入部署信息、Gateway、Secrets 和验收；Lucky Web Only 仍保持“Base + Docker + Lucky + 域名/SSL，无节点”的定位。
 
 ## 一键安装
 
@@ -139,7 +139,7 @@ Base 初始化
 │  └─ *.<ROOT_DOMAIN>
 └─ Lucky
    ├─ 公网 HTTPS :443
-   ├─ lucky.<ROOT_DOMAIN> 管理入口
+   ├─ lucky.<ROOT_DOMAIN>/zhg 管理入口（默认安全入口 zhg）
    └─ 后续由用户自己添加 Docker/Web 服务反代
 
 不会安装：
@@ -147,6 +147,24 @@ Base 初始化
 ```
 
 该 Profile 不需要 Nginx Stream，因为没有 Reality 与 HTTPS 争用 443；Lucky 直接监听公网 443。Cloudflare 会创建 `lucky.<ROOT_DOMAIN>` 以及 wildcard DNS 记录，证书自动同步进 Lucky。
+
+Lucky 后台默认安全入口固定为：
+
+```text
+zhg
+```
+
+因此管理地址是：
+
+```text
+本地 / SSH 隧道：
+http://127.0.0.1:16601/zhg
+
+Lucky Web Only 公网管理：
+https://lucky.<ROOT_DOMAIN>/zhg
+```
+
+脚本使用 Lucky 官方 `SetSafeURL` 写入该值，并在部署验收时读取 `BaseConfigure.SafeURL` 确认设置已真正生效。运行 `vps-init secrets`、`vps-init info` 或 `vps-init gateway` 都会显示这个安全入口和完整管理地址。
 
 应用仍由用户自行安装。例如 Docker 端口建议只绑定 loopback：
 
@@ -195,10 +213,10 @@ System Nginx Stream
 
 然后直接进入 Lucky 的 Web 服务页面，把域名反代到对应的本地端口。
 
-Lucky 管理后台继续只监听：
+Lucky 管理后台继续只监听本地端口，并默认使用安全入口：
 
 ```text
-127.0.0.1:16601
+127.0.0.1:16601/zhg
 ```
 
 不直接暴露公网。运行：
@@ -210,7 +228,7 @@ vps-init gateway
 会显示可复制的 SSH 隧道命令；建立隧道后，本机浏览器访问：
 
 ```text
-http://127.0.0.1:16601
+http://127.0.0.1:16601/zhg
 ```
 
 用户名、密码以及隧道命令也会显示在：
