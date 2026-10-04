@@ -60,6 +60,18 @@ verify_lucky_safe_url() {
   [[ "$actual" == "$expected" ]]
 }
 
+verify_lucky_local_version() {
+  # Lucky moves /version under the safe entry once SetSafeURL is applied.
+  # The unprefixed URL then 404s, so acceptance must use the same entry as the admin UI.
+  local safe="${LUCKY_SAFE_URL:-zhg}"
+  safe="${safe#/}"
+  if [[ -n "$safe" ]]; then
+    curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:16601/${safe}/version"
+  else
+    curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:16601/version"
+  fi
+}
+
 verify_mihomo_public_endpoint() {
   local body expected_server
   if [[ "$SUBSCRIPTION_EXPOSE_MODE_RESOLVED" == direct-ip-https ]]; then
@@ -285,7 +297,7 @@ verify_all() {
       check "Lucky active" systemctl is-active --quiet lucky
       check "Lucky SafeURL" verify_lucky_safe_url
       check "Lucky owns public 443" bash -c "ss -H -ltnp 'sport = :443' | grep -i lucky >/dev/null"
-      check "Lucky local admin API" curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:16601/version"
+      check "Lucky local admin API" verify_lucky_local_version
       check "Lucky safe local admin path" curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:16601/${LUCKY_SAFE_URL:-zhg}"
       check "Lucky public admin domain HTTPS" curl -fsS --max-time 10 --resolve "${LUCKY_DOMAIN}:443:127.0.0.1" -o /dev/null "https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}"
       check "3x-ui not active" bash -c "! systemctl is-active --quiet x-ui 2>/dev/null"
