@@ -282,14 +282,8 @@ EOF2
     die "Stage 1 改变了原有 KbdInteractiveAuthentication；已停止。"
 }
 
-write_ssh_stage_config() {
-  # OpenSSH uses first-value-wins for these global keywords. Stage 1 adds
-  # public-key access while preserving the provider/current authentication
-  # policy. It must NOT turn a working root-password path off before the
-  # second-session key test succeeds.
-  local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf
-  backup_file "$dropin"
-  cat > "$dropin" <<EOF2
+render_ssh_stage_config() {
+  cat <<EOF2
 # Managed by vps-init. Stage 1: add root public-key access while preserving the
 # pre-existing authentication policy until a second SSH session is verified.
 Port ${SSH_PORT}
@@ -298,6 +292,16 @@ PubkeyAuthentication yes
 PasswordAuthentication ${SSH_BASE_PASSWORD_AUTH}
 KbdInteractiveAuthentication ${SSH_BASE_KBD_AUTH}
 EOF2
+}
+
+write_ssh_stage_config() {
+  # OpenSSH uses first-value-wins for these global keywords. Stage 1 adds
+  # public-key access while preserving the provider/current authentication
+  # policy. It must NOT turn a working root-password path off before the
+  # second-session key test succeeds.
+  local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf
+  backup_file "$dropin"
+  render_ssh_stage_config > "$dropin"
   reload_ssh_runtime
   verify_ssh_listener
   verify_ssh_stage_policy
