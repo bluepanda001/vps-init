@@ -52,6 +52,7 @@ VPS Init ${VERSION}
   vps-init passwd               # 修改/重置并同步面板账号密码
   vps-init passwd xui|lucky
   vps-init gateway              # 查看当前 Web Gateway / Lucky 管理入口
+  vps-init reinstall            # 单独进入系统重装 / 一键 DD
   vps-init update
   vps-init logs
 TXT
@@ -401,10 +402,11 @@ menu() {
   9. 更新 VPS Init
  10. 查看服务日志
  11. 重新运行核心安装向导
+ 12. 系统重装 / 一键 DD
   0. 退出
 TXT
     local n
-    read -r -p "请选择 [0-11]: " n
+    read -r -p "请选择 [0-12]: " n
     case "$n" in
       1)
         if [[ -f "$DEFAULT_CFG" ]]; then
@@ -437,6 +439,7 @@ TXT
         "$ROOT_DIR/vps-init" wizard || wizard_rc=$?
         (( wizard_rc == 42 )) && exit 0
         ;;
+      12) "$ROOT_DIR/vps-init" reinstall; exit 0 ;;
       0) exit 0 ;;
       *) echo "输入无效。" ;;
     esac
@@ -461,6 +464,7 @@ case "$cmd" in
     exit 0
     ;;
   passwd) require_root; credential_command "${2:-}"; exit 0 ;;
+  reinstall) require_root; wizard_reinstall; exit 0 ;;
   gateway) require_root; show_gateway_summary "$DEFAULT_CFG"; exit 0 ;;
   logs) require_root; show_logs; exit 0 ;;
   update) require_root; update_self; exit 0 ;;
