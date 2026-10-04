@@ -309,6 +309,7 @@ wizard_collect_ssh_key() {
   if [[ -n "$existing_vps_main" ]]; then
     echo
     echo "检测到 root 已经安装统一 vps-main 公钥："
+    echo "服务器公钥位置：/root/.ssh/authorized_keys"
     ssh-keygen -lf <(printf '%s\n' "$existing_vps_main") 2>/dev/null || true
     if wizard_yesno "继续使用这把 vps-main？" y; then
       W_SSH_PUBLIC_KEY="$existing_vps_main"
@@ -334,10 +335,14 @@ wizard_collect_ssh_key() {
 ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\vps-main-ed25519" -C "vps-main"
 Get-Content "$env:USERPROFILE\.ssh\vps-main-ed25519.pub" | Set-Clipboard
 
+Windows 公钥文件：$env:USERPROFILE\.ssh\vps-main-ed25519.pub
+VPS 写入位置：/root/.ssh/authorized_keys
+
 生成后，把无 .pub 后缀的私钥导入 Netcatty Keychain，Label 固定为 vps-main。
 私钥只保存在 Windows / Netcatty Keychain，绝对不要上传到 VPS、GitHub 或聊天。
 EOF2
   elif [[ "$choice" == 3 && -n "$existing_any" ]]; then
+    echo "服务器公钥位置：/root/.ssh/authorized_keys"
     W_SSH_PUBLIC_KEY="$existing_any"
     W_SSH_IDENTITY_HINT=""
     return 0
