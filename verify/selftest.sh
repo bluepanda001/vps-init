@@ -304,7 +304,17 @@ grep -q 'systemd-run --quiet --unit=' core/ssh.sh
 grep -q 'render_ssh_stage_config' core/ssh.sh
 grep -q 'VPSINIT_VERSION=' vps-init
 grep -q 'vps-init upgrade-system' vps-init
-if grep -q '^  apt-get -y upgrade
+if grep -q "^  apt-get -y upgrade$" core/system.sh; then
+  echo 'FAIL: normal apply still performs a full system upgrade' >&2
+  exit 1
+fi
+if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
+  echo 'FAIL: Cloudflare validation must not delete the saved token before replacement' >&2
+  exit 1
+fi
+grep -q 'cert_has_ip_san "$cert" "$SERVER_IP"' modules/subscription/apply.sh
+grep -q 'cert_key_match "$cert" "$key"' modules/subscription/apply.sh
+[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.6" ]]
 # Optional destructive reinstall entry must stay explicit and pinned.
 grep -q 'bin456789/reinstall' lib/wizard.sh
 grep -q '2bcbc96100fe733bf9a16d609f799246f62666e5' lib/wizard.sh
