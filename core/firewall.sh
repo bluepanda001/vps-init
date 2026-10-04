@@ -23,6 +23,10 @@ core_firewall() {
 
   case "$PROFILE" in
     base-only) ;;
+    lucky-web)
+      ufw allow 80/tcp comment 'vps-init http'
+      ufw allow 443/tcp comment 'vps-init lucky-https'
+      ;;
     reality-only)
       ufw allow 80/tcp comment 'vps-init ip-acme'
       ufw allow 443/tcp comment 'vps-init reality'
