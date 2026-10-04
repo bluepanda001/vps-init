@@ -97,28 +97,78 @@ def test_failed_replacement_restores_original():
     assert len(posts)==2
     assert posts[1]==existing
 
-def test_cert_upload_happens_before_old_delete():
+def _patch_cert(fp):
+    old_req,old_val,old_fp=m.request,m._validated_cert_pair,m._cert_sha256
+    m._validated_cert_pair=lambda c,k:(b"cert",b"key")
+    m._cert_sha256=lambda cert:(fp)
+    return old_req,old_val,old_fp
+
+def _restore_cert(old_req,old_val,old_fp):
+    m.request,m._validated_cert_pair,m._cert_sha256=old_req,old_val,old_fp
+
+def test_same_certificate_is_not_uploaded_again():
     events=[]
-    before=[{"Key":"old-cert","Remark":"vps-init-wildcard"}]
-    after=before+[{"Key":"new-cert","Remark":"vps-init-wildcard"}]
-    gets=0
+    fp="a"*64
+    before=[{"Key":"old-cert","Remark":"vps-init-wildcard","CertsInfo":{"SHA256":fp.upper()}}]
     def fake(base,method,path,token="",body=None,query=None):
-        nonlocal gets
-        if method=="GET":
-            gets+=1
-            return {"list":copy.deepcopy(before if gets==1 else after)}
-        if method=="POST":
-            events.append(("POST",path)); return {"ok":True}
-        if method=="DELETE":
-            events.append(("DELETE",query["key"])); return {"ok":True}
-        raise AssertionError((method,path))
-    old_req=m.request; old_val=m._validated_cert_pair
-    m.request=fake; m._validated_cert_pair=lambda c,k:(b"cert",b"key")
+        events.append(method)
+        if method=="GET": return {"list":copy.deepcopy(before)}
+        raise AssertionError(method)
+    old=_patch_cert(fp); m.request=fake
     try:
         m.sync_cert("http://x","tok","unused-cert","unused-key")
     finally:
-        m.request=old_req; m._validated_cert_pair=old_val
-    assert events==[("POST","/api/ssl"),("DELETE","old-cert")]
+        _restore_cert(*old)
+    assert events==["GET"]
+
+def test_changed_certificate_is_confirmed_before_old_delete():
+    events=[]; posted=[]
+    old_fp="a"*64; new_fp="b"*64
+    before=[{"Key":"old-cert","Remark":"vps-init-wildcard","CertsInfo":{"SHA256":old_fp}}]
+    def fake(base,method,path,token="",body=None,query=None):
+        if method=="GET":
+            if not posted:
+                return {"list":copy.deepcopy(before)}
+            return {"list":before+[{
+                "Key":"new-cert","Remark":posted[-1]["Remark"],"CertsInfo":{"SHA256":new_fp}
+            }]}
+        if method=="POST":
+            posted.append(copy.deepcopy(body))
+            events.append(("POST",body["Remark"]))
+            if body["Remark"]=="vps-init-wildcard":
+                raise RuntimeError("CertificateRemarkNameConflict")
+            return {"ok":True}
+        if method=="DELETE":
+            events.append(("DELETE",query["key"])); return {"ok":True}
+        raise AssertionError(method)
+    old=_patch_cert(new_fp); m.request=fake
+    try:
+        m.sync_cert("http://x","tok","unused-cert","unused-key")
+    finally:
+        _restore_cert(*old)
+    assert events[0][0]=="POST"
+    assert events[0][1]==f"vps-init-wildcard-{new_fp[:12]}"
+    assert events[-1]==("DELETE","old-cert")
+
+def test_failed_certificate_upload_keeps_old_certificate():
+    deletes=[]
+    before=[{"Key":"old-cert","Remark":"vps-init-wildcard","CertsInfo":{"SHA256":"a"*64}}]
+    def fake(base,method,path,token="",body=None,query=None):
+        if method=="GET": return {"list":copy.deepcopy(before)}
+        if method=="POST": raise RuntimeError("simulated post failure")
+        if method=="DELETE": deletes.append(query["key"]); return {"ok":True}
+        raise AssertionError(method)
+    old=_patch_cert("b"*64); m.request=fake
+    try:
+        try:
+            m.sync_cert("http://x","tok","unused-cert","unused-key")
+        except RuntimeError as exc:
+            assert "simulated post failure" in str(exc)
+        else:
+            raise AssertionError("upload failure did not propagate")
+    finally:
+        _restore_cert(*old)
+    assert deletes==[]
 
 def test_invalid_cert_never_touches_api():
     calls=[]
@@ -140,6 +190,8 @@ if __name__=="__main__":
     test_preserve_user_rule_and_auth()
     test_profile_switch_preserves_user_proxy()
     test_failed_replacement_restores_original()
-    test_cert_upload_happens_before_old_delete()
+    test_same_certificate_is_not_uploaded_again()
+    test_changed_certificate_is_confirmed_before_old_delete()
+    test_failed_certificate_upload_keeps_old_certificate()
     test_invalid_cert_never_touches_api()
     print("LUCKY_BEHAVIOR_OK")

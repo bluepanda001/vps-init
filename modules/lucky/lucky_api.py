@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Lucky v2.27.2 loopback automation helper for vps-init."""
 from __future__ import annotations
-import argparse,base64,copy,json,subprocess,sys,time,urllib.error,urllib.parse,urllib.request
+import argparse,base64,copy,hashlib,json,subprocess,sys,time,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
 
 
@@ -102,17 +102,50 @@ def _validated_cert_pair(cert,key):
       raise RuntimeError('certificate/private key mismatch')
     return cert_path.read_bytes(),key_path.read_bytes()
 
-def sync_cert(base,token,cert,key,remark='vps-init-wildcard'):
-    # Validate new material before touching Lucky. Add and confirm the new
-    # certificate first; only then remove the previous managed copies.
-    cert_raw,key_raw=_validated_cert_pair(cert,key)
-    before=request(base,'GET','/api/ssl',token).get('list') or []
-    old=[row for row in before if isinstance(row,dict) and row.get('Remark')==remark and row.get('Key')]
-    before_keys={str(row.get('Key')) for row in before if isinstance(row,dict) and row.get('Key')}
+MANAGED_CERT_REMARK='vps-init-wildcard'
 
+def _managed_cert_remark(remark):
+    remark=remark or ''
+    return remark==MANAGED_CERT_REMARK or remark.startswith(MANAGED_CERT_REMARK+'-')
+
+def _cert_sha256(cert_bytes):
+    # Lucky stores the SHA256 of the leaf certificate DER in CertsInfo.SHA256.
+    proc=subprocess.run(
+      ['openssl','x509','-outform','DER'],
+      input=cert_bytes,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=False,
+    )
+    if proc.returncode!=0:
+      raise RuntimeError(f'openssl failed to fingerprint certificate: {proc.stderr[:300]!r}')
+    return hashlib.sha256(proc.stdout).hexdigest()
+
+def _row_cert_sha256(row):
+    info=row.get('CertsInfo') if isinstance(row.get('CertsInfo'),dict) else {}
+    return str(info.get('SHA256') or '').replace(':','').strip().lower()
+
+def sync_cert(base,token,cert,key,remark=MANAGED_CERT_REMARK):
+    # Validate new material before touching Lucky. Lucky rejects a second
+    # certificate that reuses an existing remark (CertificateRemarkNameConflict),
+    # so an identical managed certificate is kept as-is. A different certificate
+    # is uploaded under a free remark and confirmed before any old copy is deleted.
+    cert_raw,key_raw=_validated_cert_pair(cert,key)
+    fingerprint=_cert_sha256(cert_raw)
+    before=request(base,'GET','/api/ssl',token).get('list') or []
+    managed=[row for row in before if isinstance(row,dict) and row.get('Key') and _managed_cert_remark(row.get('Remark'))]
+    matched=[row for row in managed if _row_cert_sha256(row)==fingerprint]
+    if matched:
+      matched_keys={str(row.get('Key')) for row in matched}
+      for row in managed:
+        if str(row.get('Key')) not in matched_keys:
+          request(base,'DELETE','/api/ssl',token,query={'key':row['Key']})
+      return
+
+    upload_remark=remark
+    if any((row.get('Remark') or '')==upload_remark for row in managed):
+      upload_remark=f'{MANAGED_CERT_REMARK}-{fingerprint[:12]}'
+    before_keys={str(row.get('Key')) for row in before if isinstance(row,dict) and row.get('Key')}
     request(base,'POST','/api/ssl',token,body={
       'Key':'','MappingToPath':False,'MappingPath':'','MappingChangeScript':'',
-      'Enable':True,'Remark':remark,
+      'Enable':True,'Remark':upload_remark,
       'CertBase64':base64.b64encode(cert_raw).decode(),
       'KeyBase64':base64.b64encode(key_raw).decode(),
       'IssuerCertificate':'','AddFrom':'file','ExtParams':{},
@@ -120,14 +153,17 @@ def sync_cert(base,token,cert,key,remark='vps-init-wildcard'):
     })
 
     after=request(base,'GET','/api/ssl',token).get('list') or []
-    new=[row for row in after
-         if isinstance(row,dict) and row.get('Remark')==remark and row.get('Key')
-         and str(row.get('Key')) not in before_keys]
-    if not new and not (not old and any(isinstance(row,dict) and row.get('Remark')==remark for row in after)):
+    confirmed=[row for row in after
+               if isinstance(row,dict) and row.get('Key') and _managed_cert_remark(row.get('Remark'))
+               and (_row_cert_sha256(row)==fingerprint or (
+                 not _row_cert_sha256(row) and row.get('Remark')==upload_remark
+                 and str(row.get('Key')) not in before_keys))]
+    if not confirmed:
       raise RuntimeError('new Lucky certificate was not confirmed after upload')
-
-    for row in old:
-      request(base,'DELETE','/api/ssl',token,query={'key':row['Key']})
+    confirmed_keys={str(row.get('Key')) for row in confirmed}
+    for row in managed:
+      if str(row.get('Key')) not in confirmed_keys:
+        request(base,'DELETE','/api/ssl',token,query={'key':row['Key']})
 
 MANAGED_RULE_NAMES={'vps-init-web-only','vps-init-https'}
 MANAGED_PROXY_REMARKS={'lucky-admin','3x-ui-panel','subscription'}
