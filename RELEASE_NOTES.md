@@ -1,5 +1,15 @@
 # Release Notes
 
+## v1.3.1
+
+- 修复一键 DD 交互：正常 `vps-init wizard` 不再先询问是否重装，DD 改为独立 `vps-init reinstall` 和主菜单入口；DD 完重新进系统后直接看到安装方式 / Profile。
+- DD 密码改为隐藏输入；即使上游 `bin456789/reinstall` 输出摘要，也会在 vps-init 层统一把 Password/密码字段脱敏为 `[hidden]`。请求 reboot 不再使用特殊非零返回码触发全局 ERR trap。
+- SSH 公钥向导明确显示 VPS 端公钥位置 `/root/.ssh/authorized_keys`；首次创建主密钥时同时显示 Windows 公钥文件位置。
+- 保留并明确显示 `Base Only`，新增 `Lucky Web Only` Profile：Base + Docker Engine/Compose + Lucky + Cloudflare DNS + wildcard SSL，不安装 3x-ui、Xray、Reality、订阅或 CDN 节点。
+- `Lucky Web Only` 中 Lucky 直接监听公网 443，不安装 Nginx Stream；自动创建 `lucky.<ROOT_DOMAIN>` 和 wildcard DNS，申请 `ROOT_DOMAIN + *.ROOT_DOMAIN` 证书并同步到 Lucky。
+- `Lucky Web Only` 默认安装 Docker，Lucky 管理用户名/密码支持向导自定义；`vps-init info`、`gateway`、`secrets` 和完整 verify 均识别该 Profile。
+- 新增验收：Docker active、Lucky active、443 由 Lucky 持有、wildcard 证书有效、本地 Lucky API 可用、`https://lucky.<domain>` 可通过本机 443/SNI 正常访问，并确认 3x-ui/Nginx 未误启动。
+
 ## v1.3.0
 
 - 明确 Web Gateway 分工：不引入 Nginx Proxy Manager，也不新增 vps-init 自己的反向代理中心；系统 Nginx 仅负责公网 443 / SNI Stream 基础入口，应用反向代理默认交给 Lucky 图形界面维护。
