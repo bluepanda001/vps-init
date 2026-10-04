@@ -102,10 +102,12 @@ arm_ssh_stage_rollback() {
   unit="vps-init-ssh-rollback-$(date +%s)-$"
   SSH_ROLLBACK_UNIT="$unit"
 
-  if [[ -f "$dropin" ]]; then
+  if [[ -f "$dropin" ]] && ! { grep -q 'Managed by vps-init. Stage 1' "$dropin" && ! is_true "${SSH_KEY_VERIFIED:-false}"; }; then
     cp -a "$dropin" "$previous"
     printf 'present\n' > "$dir/mode"
   else
+    # An unverified legacy vps-init Stage 1 must not become the rollback target.
+    # Falling back to "absent" restores the provider/current baseline instead.
     rm -f "$previous"
     printf 'absent\n' > "$dir/mode"
   fi
@@ -120,7 +122,8 @@ else
   rm -f "\$dropin"
 fi
 sshd -t
-if systemctl cat ssh.socket >/dev/null 2>&1; then
+if systemctl cat ssh.socket >/dev/null 2>&1 &&
+   { systemctl is-active --quiet ssh.socket 2>/dev/null || systemctl is-enabled --quiet ssh.socket 2>/dev/null; }; then
   systemctl daemon-reload
   systemctl restart ssh.socket
   systemctl reload ssh.service 2>/dev/null || true
@@ -301,7 +304,10 @@ EOF2
 }
 
 write_ssh_final_config() {
-  local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf
+  local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf legacy
+  for legacy in /etc/ssh/sshd_config.d/00-vps-init.conf /etc/ssh/sshd_config.d/99-vps-init.conf; do
+    if [[ -f "$legacy" ]]; then backup_file "$legacy"; rm -f "$legacy"; fi
+  done
   cat > "$dropin" <<EOF2
 # Managed by vps-init. Final key-only root SSH baseline.
 Port ${SSH_PORT}
