@@ -65,8 +65,8 @@ optional_docker() {
   [[ -n "$os_codename" ]] || die "无法从 /etc/os-release 获取 VERSION_CODENAME。"
 
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${os_codename} stable" > /etc/apt/sources.list.d/docker.list
-  apt-get update
-  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  apt_get_with_lock_retry update
+  apt_get_with_lock_retry install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
   docker_merge_daemon_config
 
