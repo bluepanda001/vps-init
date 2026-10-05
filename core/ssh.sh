@@ -9,14 +9,20 @@ ssh_socket_activation_in_use() {
 reload_ssh_runtime() {
   sshd -t
   if ssh_socket_activation_in_use; then
-    # Ubuntu 24.04 uses systemd socket activation by default. The generator
-    # reads Port= from sshd_config, so a daemon-reload + socket restart is
-    # required before the new port is actually bound.
-    systemctl daemon-reload
-    systemctl restart ssh.socket
-    # Reload the service as well so authentication policy changes affect
-    # already spawned/new sshd instances without terminating this session.
-    systemctl reload ssh.service 2>/dev/null || true
+    # StartLimitBurst counts socket restarts, not SIGHUP reloads. Restarting
+    # an already-correct listener several times leaves new SSH sessions with
+    # no banner. The generator binds Port= only after daemon-reload plus a
+    # socket restart, so that path is reserved for a listener that is not
+    # already on SSH_PORT. reset-failed first so an earlier start-limit does
+    # not make the required restart fail immediately.
+    if ss -H -ltn4 "sport = :${SSH_PORT}" 2>/dev/null | grep -q .; then
+      systemctl reload ssh.service 2>/dev/null || systemctl reload sshd.service 2>/dev/null || true
+    else
+      systemctl daemon-reload
+      systemctl reset-failed ssh.service ssh.socket >/dev/null 2>&1 || true
+      systemctl restart ssh.socket
+      systemctl reload ssh.service 2>/dev/null || true
+    fi
   else
     systemctl reload ssh.service 2>/dev/null || systemctl reload sshd.service
   fi
@@ -155,6 +161,7 @@ sshd -t
 if systemctl cat ssh.socket >/dev/null 2>&1 &&
    { systemctl is-active --quiet ssh.socket 2>/dev/null || systemctl is-enabled --quiet ssh.socket 2>/dev/null; }; then
   systemctl daemon-reload
+  systemctl reset-failed ssh.service ssh.socket >/dev/null 2>&1 || true
   systemctl restart ssh.socket
   systemctl reload ssh.service 2>/dev/null || true
 else

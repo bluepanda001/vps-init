@@ -78,4 +78,33 @@ core_system >/dev/null
 grep -q '^update$' "$APT_CALLS"
 grep -q '^install -y ' "$APT_CALLS"
 
+# Repeating apply must not restart an SSH socket that is already listening.
+# A down listener may restart only after the previous start-limit is cleared.
+SSH_CALLS="$td/ssh-calls"
+systemctl() { printf 'systemctl %s\n' "$*" >> "$SSH_CALLS"; }
+sshd() { printf 'sshd %s\n' "$*" >> "$SSH_CALLS"; }
+ss() {
+  if [[ "${SSH_LISTEN:-}" == "yes" ]]; then
+    printf 'LISTEN 0 128 0.0.0.0:%s 0.0.0.0:*\n' "${SSH_PORT}"
+  fi
+}
+: > "$SSH_CALLS"
+SSH_PORT=22
+SSH_LISTEN=yes
+reload_ssh_runtime
+reload_ssh_runtime
+grep -q 'systemctl reload ssh.service' "$SSH_CALLS"
+! grep -q 'systemctl restart ssh.socket' "$SSH_CALLS"
+! grep -q 'systemctl daemon-reload' "$SSH_CALLS"
+: > "$SSH_CALLS"
+SSH_PORT=2222
+SSH_LISTEN=no
+reload_ssh_runtime
+grep -q 'systemctl daemon-reload' "$SSH_CALLS"
+grep -q 'systemctl reset-failed ssh.service ssh.socket' "$SSH_CALLS"
+grep -q 'systemctl restart ssh.socket' "$SSH_CALLS"
+reset_at="$(grep -n 'systemctl reset-failed ssh.service ssh.socket' "$SSH_CALLS" | head -1 | cut -d: -f1)"
+restart_at="$(grep -n 'systemctl restart ssh.socket' "$SSH_CALLS" | head -1 | cut -d: -f1)"
+[[ "$reset_at" -lt "$restart_at" ]]
+
 echo "SHELL_BEHAVIORS_OK"
