@@ -111,7 +111,6 @@ restart_at="$(grep -n 'systemctl restart ssh.socket' "$SSH_CALLS" | head -1 | cu
 # re-arming after a fired rollback must clear the stale marker.
 unit_name="$(ssh_rollback_unit_name)"
 [[ "$unit_name" =~ ^vps-init-ssh-rollback-[0-9]+-[0-9]+$ ]]
-[[ "$unit_name" != *'* ]]
 
 SSH_ROLLBACK_MARKER="$td/rollback-fired"
 touch "$SSH_ROLLBACK_MARKER"
