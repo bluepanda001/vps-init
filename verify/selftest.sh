@@ -310,8 +310,10 @@ if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
 fi
 grep -q 'cert_has_ip_san "$cert" "$SERVER_IP"' modules/subscription/apply.sh
 grep -q 'cert_key_match "$cert" "$key"' modules/subscription/apply.sh
-[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.10" ]]
+[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.11" ]]
 grep -q 'systemctl reset-failed ssh.service ssh.socket' core/ssh.sh
+grep -q 'ssh_rollback_unit_name' core/ssh.sh
+grep -q 'clear_ssh_rollback_marker' core/ssh.sh
 grep -q 'CertificateRemarkNameConflict' modules/lucky/lucky_api.py
 grep -q '16601/${safe}/version' lib/common.sh
 grep -q 'lucky_api() {' lib/common.sh

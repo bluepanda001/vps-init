@@ -107,4 +107,15 @@ reset_at="$(grep -n 'systemctl reset-failed ssh.service ssh.socket' "$SSH_CALLS"
 restart_at="$(grep -n 'systemctl restart ssh.socket' "$SSH_CALLS" | head -1 | cut -d: -f1)"
 [[ "$reset_at" -lt "$restart_at" ]]
 
+# SSH rollback timer identity must be a valid systemd unit fragment and
+# re-arming after a fired rollback must clear the stale marker.
+unit_name="$(ssh_rollback_unit_name)"
+[[ "$unit_name" =~ ^vps-init-ssh-rollback-[0-9]+-[0-9]+$ ]]
+
+SSH_ROLLBACK_MARKER="$td/rollback-fired"
+touch "$SSH_ROLLBACK_MARKER"
+[[ -e "$SSH_ROLLBACK_MARKER" ]]
+clear_ssh_rollback_marker
+[[ ! -e "$SSH_ROLLBACK_MARKER" ]]
+
 echo "SHELL_BEHAVIORS_OK"
