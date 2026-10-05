@@ -233,8 +233,7 @@ cert_key_match() {
 
 cert_has_ip_san() {
   local cert="$1" ip="$2"
-  openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null |
-    grep -Fq "IP Address:${ip}"
+  openssl x509 -in "$cert" -noout -checkip "$ip" >/dev/null 2>&1
 }
 
 profile_has_domain() { [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" || "$PROFILE" == "lucky-web" ]]; }
