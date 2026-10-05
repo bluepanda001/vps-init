@@ -106,9 +106,60 @@ wait_apt_lock() {
   local timeout="${1:-300}" waited=0
   while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
         fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
-        fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+        fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
+        fuser /var/cache/apt/archives/lock >/dev/null 2>&1; do
     (( waited >= timeout )) && die "等待 apt/dpkg 锁超时。"
     sleep 3; waited=$((waited+3))
+  done
+}
+
+apt_get_with_lock_retry() {
+  # wait_apt_lock handles the normal case. The retry loop closes the small race
+  # where unattended-upgrades/apt-daily grabs a lock after the check but before
+  # apt-get itself opens it.
+  local timeout="${VPSINIT_APT_LOCK_TIMEOUT:-300}"
+  local interval="${VPSINIT_APT_LOCK_RETRY_INTERVAL:-3}"
+  local waited=0 remaining rc err
+
+  [[ "$timeout" =~ ^[0-9]+$ && "$timeout" -gt 0 ]] ||
+    die "VPSINIT_APT_LOCK_TIMEOUT 必须是正整数秒。"
+  [[ "$interval" =~ ^[0-9]+$ && "$interval" -gt 0 ]] ||
+    die "VPSINIT_APT_LOCK_RETRY_INTERVAL 必须是正整数秒。"
+
+  while true; do
+    remaining=$((timeout-waited))
+    (( remaining > 0 )) || {
+      log_error "等待 apt/dpkg 锁重试超时（${timeout}s）。"
+      return 100
+    }
+
+    wait_apt_lock "$remaining"
+    err="$(mktemp)"
+
+    if apt-get "$@" 2>"$err"; then
+      [[ ! -s "$err" ]] || cat "$err" >&2
+      rm -f "$err"
+      return 0
+    else
+      rc=$?
+    fi
+
+    [[ ! -s "$err" ]] || cat "$err" >&2
+    if [[ "$rc" -ne 100 ]] || ! grep -Eqi \
+      'Could not get lock|Unable to acquire.*lock|Unable to lock directory|Resource temporarily unavailable|is another process using it' "$err"; then
+      rm -f "$err"
+      return "$rc"
+    fi
+    rm -f "$err"
+
+    if (( waited + interval >= timeout )); then
+      log_error "apt/dpkg 锁在 ${timeout}s 内仍不可用。"
+      return "$rc"
+    fi
+
+    log_warn "检测到 apt/dpkg 锁竞争，${interval}s 后自动重试；无需重新运行部署。"
+    sleep "$interval"
+    waited=$((waited+interval))
   done
 }
 
