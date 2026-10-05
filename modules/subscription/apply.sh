@@ -8,8 +8,8 @@ ensure_acme_renewal() {
   # Reality-only IP certificates are short-lived (~6 days), so renewal is a
   # deployment requirement rather than a best-effort convenience.
   wait_apt_lock 300
-  apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq cron
+  apt_get_with_lock_retry update -qq
+  DEBIAN_FRONTEND=noninteractive apt_get_with_lock_retry install -y -qq cron
   systemctl enable --now cron >/dev/null 2>&1 || die "无法启用 cron；IP 短期证书不能安全自动续期。"
   systemctl is-active --quiet cron || die "cron 未处于 active 状态；IP 短期证书不能安全自动续期。"
 
@@ -63,8 +63,8 @@ module_ip_certificate() {
   port_in_use 80 && die "3x-ui IP SSL 的 HTTP-01 需要 80 端口空闲，但当前已被占用。"
 
   wait_apt_lock 300
-  apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq socat
+  apt_get_with_lock_retry update -qq
+  DEBIAN_FRONTEND=noninteractive apt_get_with_lock_retry install -y -qq socat
   install -d -m 700 /root/cert/ip
 
   log_info "为公网 IPv4 ${SERVER_IP} 签发 Let's Encrypt short-lived IP 证书..."
