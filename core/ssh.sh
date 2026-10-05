@@ -130,6 +130,15 @@ EOF2
   grep -qi '^passwordauthentication no$' <<<"$effective" || die "PasswordAuthentication 未成功关闭。"
 }
 
+ssh_rollback_unit_name() {
+  printf 'vps-init-ssh-rollback-%s-%s\n' "$(date +%s)" "$"
+}
+
+clear_ssh_rollback_marker() {
+  [[ -n "${SSH_ROLLBACK_MARKER:-}" ]] || return 0
+  rm -f "$SSH_ROLLBACK_MARKER"
+}
+
 arm_ssh_stage_rollback() {
   local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf dir script previous unit
   dir="${BACKUP_DIR}/ssh-stage-rollback"
@@ -137,7 +146,8 @@ arm_ssh_stage_rollback() {
   previous="$dir/00-00-vps-init.conf.previous"
   script="$dir/rollback.sh"
   SSH_ROLLBACK_MARKER="$dir/fired"
-  unit="vps-init-ssh-rollback-$(date +%s)-$"
+  clear_ssh_rollback_marker
+  unit="$(ssh_rollback_unit_name)"
   SSH_ROLLBACK_UNIT="$unit"
 
   if [[ -f "$dropin" ]] && ! { grep -q 'Managed by vps-init. Stage 1' "$dropin" && ! is_true "${SSH_KEY_VERIFIED:-false}"; }; then
