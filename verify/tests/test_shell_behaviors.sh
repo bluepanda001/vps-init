@@ -26,6 +26,15 @@ grep -qx 'PermitRootLogin prohibit-password' <<<"$stage"
 grep -qx 'PasswordAuthentication no' <<<"$stage"
 grep -qx 'KbdInteractiveAuthentication no' <<<"$stage"
 
+# sshd -T on OpenSSH 9.x canonicalizes prohibit-password to without-password.
+# Stage 1 must treat that as the expected key-only value, and must not accept yes.
+stage_effective=$'port 22\npermitrootlogin without-password\npubkeyauthentication yes\npasswordauthentication no\nkbdinteractiveauthentication no'
+permitrootlogin_matches_expected prohibit-password "$stage_effective"
+permitrootlogin_matches_expected without-password "$stage_effective"
+! permitrootlogin_matches_expected yes "$stage_effective"
+permitrootlogin_matches_expected yes $'permitrootlogin yes'
+! permitrootlogin_matches_expected prohibit-password $'permitrootlogin yes'
+
 # Certificate identity checks: same key/current IP passes; changed IP or key fails.
 td="$(mktemp -d)"
 trap 'rm -rf "$td"' EXIT

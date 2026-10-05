@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.3.12
+
+- 修复 SSH Stage 1 在 Ubuntu 24.04 / OpenSSH 9.6 上立刻失败：配置写入的是 `PermitRootLogin prohibit-password`，但 `sshd -T` 实际输出 `without-password`。旧校验按字面量比较，Stage 1 在进入第二终端确认前就退出，10 分钟回滚任务却已经挂上。现在把这两个 key-only 别名视为同一策略。
+
 ## v1.3.11
 
 - 修复 SSH Stage 1 自动回滚 timer 的 systemd unit 名称：之前尾部误写成字面量 `$`，首次走 SSH 二次验证时可能导致 `systemd-run --unit` 拒绝该名称并中止部署；现在使用真实 shell PID 生成合法且唯一的 unit 名。
