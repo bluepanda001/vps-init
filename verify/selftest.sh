@@ -119,7 +119,7 @@ grep -q 'cmd+=(--ssh-key "$key")' lib/wizard.sh
 grep -q '\$NF=="vps-main"' lib/wizard.sh
 
 # V1.2.3: short-lived IP certificates must have a verified renewal mechanism.
-grep -q 'apt-get install -y -qq cron' modules/subscription/apply.sh
+grep -q 'apt_get_with_lock_retry install -y -qq cron' modules/subscription/apply.sh
 grep -q 'systemctl enable --now cron' modules/subscription/apply.sh
 grep -q -- '--install-cronjob' modules/subscription/apply.sh
 grep -q "acme\\.sh.*--cron" modules/subscription/apply.sh
