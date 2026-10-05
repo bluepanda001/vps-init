@@ -44,6 +44,11 @@ cert_key_match "$td/cert1.pem" "$td/key1.pem"
 ! cert_key_match "$td/cert1.pem" "$td/key2.pem"
 cert_has_ip_san "$td/cert1.pem" "203.0.113.10"
 ! cert_has_ip_san "$td/cert1.pem" "203.0.113.11"
+# A SAN for .10 must not also match the shorter address .1.
+if cert_has_ip_san "$td/cert1.pem" "203.0.113.1"; then
+  echo 'FAIL: IP SAN matched only an address prefix' >&2
+  exit 1
+fi
 
 # A transient or auth failure must never delete/replace the previously saved
 # Cloudflare token. Use an overridable path and a fake helper exit status.

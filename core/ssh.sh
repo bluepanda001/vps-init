@@ -47,19 +47,14 @@ verify_root_key_policy() {
 }
 
 capture_ssh_baseline() {
-  # Read the provider/current policy without our managed drop-in. We only move
-  # the file on disk while evaluating sshd -T; the running daemon is untouched.
-  local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf tmp effective
-  tmp="$(mktemp)"
-  if [[ -f "$dropin" ]]; then
-    cp -a "$dropin" "$tmp"
-    rm -f "$dropin"
-    effective="$(sshd -T 2>/dev/null || true)"
-    install -m 600 "$tmp" "$dropin"
-  else
-    effective="$(sshd -T 2>/dev/null || true)"
-  fi
-  rm -f "$tmp"
+  # Read the actual effective policy without removing the live drop-in. This
+  # also keeps an already-hardened server key-only when its port is changed.
+  local registry="$STATE_DIR/ssh-stage-rollback" lock_fd effective
+  install -d -m 700 "$registry"
+  exec {lock_fd}>"$registry/lock"
+  flock -x "$lock_fd"
+  effective="$(sshd -T 2>/dev/null || true)"
+  exec {lock_fd}>&-
   [[ -n "$effective" ]] || die "无法读取 SSH 基线配置；不会修改 sshd。"
 
   SSH_BASE_PERMIT_ROOT="$(awk '$1=="permitrootlogin"{print $2; exit}' <<<"$effective")"
@@ -117,11 +112,17 @@ EOF2
 
 write_ssh_stage_config() {
   local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf
+  local registry="$STATE_DIR/ssh-stage-rollback" lock_fd
+  exec {lock_fd}>"$registry/lock"
+  flock -x "$lock_fd"
+  [[ -f "$registry/current" && "$(cat "$registry/current")" == "$SSH_ROLLBACK_UNIT" ]] ||
+    die "SSH 验证阶段已过期；请重新运行并验证登录。"
   backup_file "$dropin"
   render_ssh_stage_config > "$dropin"
   reload_ssh_runtime
   verify_ssh_listener
   verify_ssh_stage_policy
+  exec {lock_fd}>&-
 }
 
 write_ssh_final_config() {
@@ -157,31 +158,48 @@ clear_ssh_rollback_marker() {
 
 arm_ssh_stage_rollback() {
   local dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf dir script previous unit
-  dir="${BACKUP_DIR}/ssh-stage-rollback"
-  mkdir -p "$dir"
+  local registry="$STATE_DIR/ssh-stage-rollback" lock_fd old_unit=""
+  install -d -m 700 "$registry"
+  exec {lock_fd}>"$registry/lock"
+  flock -x "$lock_fd"
+
+  # Stop legacy, unguarded timers too. A stopped/queued guarded callback must
+  # still check the persistent generation before touching SSH configuration.
+  [[ ! -f "$registry/current" ]] || read -r old_unit < "$registry/current"
+  unit="$(ssh_rollback_unit_name)"
+  dir="$registry/$unit"
+  install -d -m 700 "$dir"
   previous="$dir/00-00-vps-init.conf.previous"
   script="$dir/rollback.sh"
   SSH_ROLLBACK_MARKER="$dir/fired"
   clear_ssh_rollback_marker
-  unit="$(ssh_rollback_unit_name)"
   SSH_ROLLBACK_UNIT="$unit"
 
-  if [[ -f "$dropin" ]] && ! { grep -q 'Managed by vps-init. Stage 1' "$dropin" && ! is_true "${SSH_KEY_VERIFIED:-false}"; }; then
+  # A retry inherits the FIRST run's baseline, never an unverified Stage 1.
+  if [[ "$old_unit" =~ ^vps-init-ssh-rollback-[0-9]+-[0-9]+$ && -f "$registry/$old_unit/mode" ]]; then
+    cp -a "$registry/$old_unit/mode" "$dir/mode"
+    if [[ "$(cat "$dir/mode")" == present ]]; then
+      cp -a "$registry/$old_unit/00-00-vps-init.conf.previous" "$previous"
+    fi
+  elif [[ -f "$dropin" ]] && ! { grep -q 'Managed by vps-init. Stage 1' "$dropin" && ! is_true "${SSH_KEY_VERIFIED:-false}"; }; then
     cp -a "$dropin" "$previous"
     printf 'present\n' > "$dir/mode"
   else
-    rm -f "$previous"
     printf 'absent\n' > "$dir/mode"
   fi
 
-  cat > "$script" <<EOF2
-#!/usr/bin/env bash
-set -Eeuo pipefail
-dropin=/etc/ssh/sshd_config.d/00-00-vps-init.conf
-if [[ "\$(cat "$dir/mode")" == present ]]; then
-  install -m 600 "$previous" "\$dropin"
+  {
+    printf '#!/usr/bin/env bash\nset -Eeuo pipefail\n'
+    printf 'dropin=%q\nregistry=%q\ndir=%q\nunit=%q\n' "$dropin" "$registry" "$dir" "$unit"
+    cat <<'ROLLBACK'
+exec {lock_fd}>"$registry/lock"
+flock -x "$lock_fd"
+# A later run or a successful finalization invalidates this callback.
+[[ -f "$registry/current" && "$(cat "$registry/current")" == "$unit" ]] || exit 0
+if [[ "$(cat "$dir/mode")" == present ]]; then
+  install -m 600 "$dir/00-00-vps-init.conf.previous" "$dropin"
 else
-  rm -f "\$dropin"
+  rm -f "$dropin"
 fi
 sshd -t
 if systemctl cat ssh.socket >/dev/null 2>&1 &&
@@ -193,19 +211,59 @@ if systemctl cat ssh.socket >/dev/null 2>&1 &&
 else
   systemctl reload ssh.service 2>/dev/null || systemctl reload sshd.service
 fi
-touch "$SSH_ROLLBACK_MARKER"
-EOF2
+touch "$dir/fired"
+rm -f "$registry/current"
+ROLLBACK
+  } > "$script"
   chmod 700 "$script"
-  systemd-run --quiet --unit="$unit" --on-active=10m /bin/bash "$script" >/dev/null ||
-    die "无法创建 SSH 10 分钟自动回滚任务；为避免锁机，不继续修改 SSH。"
-  log_warn "SSH Stage 1 已启用 10 分钟自动回滚保护；验证成功后会自动取消。"
+  # Arm before publishing ownership: SIGKILL during systemd-run must leave
+  # the previous timer and generation valid until the replacement exists.
+  if ! systemd-run --quiet --unit="$unit" --on-active=10m /bin/bash "$script" >/dev/null; then
+    die "无法创建 SSH 10 分钟自动回滚任务；保留原有回滚保护，不继续修改 SSH。"
+  fi
+  printf '%s\n' "$unit" > "$registry/current.new"
+  mv -f "$registry/current.new" "$registry/current"
+  # Sweep every time, even when a guarded current exists: an upgrade killed
+  # after publishing ownership may still have unguarded legacy units pending.
+  local legacy_unit rest
+  while read -r legacy_unit rest; do
+    [[ "$legacy_unit" == vps-init-ssh-rollback-*.timer || "$legacy_unit" == vps-init-ssh-rollback-*.service ]] || continue
+    [[ "$legacy_unit" == "$unit.timer" || "$legacy_unit" == "$unit.service" ]] && continue
+    systemctl stop "$legacy_unit" >/dev/null 2>&1 || true
+  done < <(systemctl list-units --all --plain --no-legend 'vps-init-ssh-rollback-*.timer' 'vps-init-ssh-rollback-*.service')
+  exec {lock_fd}>&-
+  log_warn "SSH 配置已启用 10 分钟自动回滚保护；成功提交后会自动取消。"
 }
 
 cancel_ssh_stage_rollback() {
   [[ -n "${SSH_ROLLBACK_UNIT:-}" ]] || return 0
+  local registry="$STATE_DIR/ssh-stage-rollback" lock_fd
+  install -d -m 700 "$registry"
+  exec {lock_fd}>"$registry/lock"
+  flock -x "$lock_fd"
+  # An older process must never invalidate a newer process's rollback.
+  if [[ -f "$registry/current" && "$(cat "$registry/current")" == "$SSH_ROLLBACK_UNIT" ]]; then
+    rm -f "$registry/current"
+  fi
+  exec {lock_fd}>&-
   systemctl stop "${SSH_ROLLBACK_UNIT}.timer" >/dev/null 2>&1 || true
   systemctl stop "${SSH_ROLLBACK_UNIT}.service" >/dev/null 2>&1 || true
   systemctl reset-failed "${SSH_ROLLBACK_UNIT}.service" >/dev/null 2>&1 || true
+}
+
+commit_ssh_final_config() {
+  local registry="$STATE_DIR/ssh-stage-rollback" lock_fd
+  install -d -m 700 "$registry"
+  exec {lock_fd}>"$registry/lock"
+  flock -x "$lock_fd"
+  [[ -n "${SSH_ROLLBACK_UNIT:-}" && -f "$registry/current" && "$(cat "$registry/current")" == "$SSH_ROLLBACK_UNIT" ]] &&
+    ! ssh_stage_rollback_fired || die "SSH 验证阶段已回滚或被新部署替代；请重新运行并验证登录。"
+  # Keep the generation valid if writing/reloading/verifying the final config
+  # fails. The timer can still recover it after this process releases the lock.
+  write_ssh_final_config
+  rm -f "$registry/current"
+  exec {lock_fd}>&-
+  cancel_ssh_stage_rollback
 }
 
 ssh_stage_rollback_fired() {
@@ -268,7 +326,9 @@ EOF2
 
   state_load
   if is_true "${SSH_KEY_VERIFIED:-false}" && [[ "${SSH_VERIFIED_PORT:-}" == "$SSH_PORT" ]]; then
-    write_ssh_final_config
+    # Even an already-verified deployment needs recovery if reload fails.
+    arm_ssh_stage_rollback
+    commit_ssh_final_config
     log_ok "SSH 密钥与端口 ${SSH_PORT} 此前均已验证；保持 key-only root SSH。"
     show_netcatty_identity_hint
     return 0
@@ -330,8 +390,7 @@ EOF2
     die "非交互执行无法确认第二个 SSH 会话。公钥已安装并启用 root 公钥登录，但不会自动关闭全局密码策略；请先测试密钥后在交互终端重跑。"
   fi
 
-  write_ssh_final_config
-  cancel_ssh_stage_rollback
+  commit_ssh_final_config
   state_set SSH_KEY_VERIFIED true
   state_set SSH_VERIFIED_PORT "$SSH_PORT"
   log_ok "SSH 密钥登录与端口 ${SSH_PORT} 已验证，root 密码/键盘交互登录已关闭。"

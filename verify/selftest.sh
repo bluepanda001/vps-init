@@ -301,6 +301,7 @@ grep -q 'https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}' vps-init
 python3 verify/tests/test_lucky_behavior.py
 python3 verify/tests/test_docker_merge.py
 bash verify/tests/test_shell_behaviors.sh
+python3 verify/tests/test_ssh_rollback.py
 
 # Stability v1.3.6: behavioral regression coverage and safety boundaries.
 grep -q 'systemd-run --quiet --unit=' core/ssh.sh
