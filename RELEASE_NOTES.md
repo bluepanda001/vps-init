@@ -1,5 +1,11 @@
 # Release Notes
 
+## v1.3.11
+
+- 修复 SSH Stage 1 自动回滚 timer 的 systemd unit 名称：之前尾部误写成字面量 `$`，首次走 SSH 二次验证时可能导致 `systemd-run --unit` 拒绝该名称并中止部署；现在使用真实 shell PID 生成合法且唯一的 unit 名。
+- 修复自动回滚已经触发后重新进入 Stage 1 时的旧 marker 残留：每次重新 arm rollback 都先清除旧的 `fired` 标记，避免用户完成第二次密钥验证后仍被反复判定为“回滚已经执行”。
+- 行为测试新增 rollback unit 名称格式校验和 marker re-arm 清理验证，防止这两个首次部署路径问题再次回归。
+
 ## v1.3.10
 
 - 修复重复部署重启 `ssh.socket` 打满 systemd 启动次数限制的问题。目标端口已经在监听时只重载 sshd（SIGHUP），不再重启套接字。端口未监听时才 `daemon-reload`，并先 `reset-failed` 再重启套接字。
