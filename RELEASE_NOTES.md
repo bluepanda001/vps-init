@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.3.10
+
+- 修复重复部署重启 `ssh.socket` 打满 systemd 启动次数限制的问题。目标端口已经在监听时只重载 sshd（SIGHUP），不再重启套接字。端口未监听时才 `daemon-reload`，并先 `reset-failed` 再重启套接字。
+
 ## v1.3.9
 
 - 修复已经开过安全入口的 Lucky 重跑：`/version` 和 `/api/login` 都会挪到 `/zhg` 下面，根路径返回 404。启动等待和后续 API 调用会自动改用安全入口，避免第二次部署在“Lucky 后台未启动”处退出。
