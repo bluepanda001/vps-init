@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 module_nginx() {
   [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" ]] || return 0
-  apt-get install -y nginx libnginx-mod-stream
+  apt_get_with_lock_retry install -y nginx libnginx-mod-stream
   nginx -V 2>&1 | grep -q -- '--with-stream_ssl_preread_module' || \
     die "当前 Nginx 构建不支持 stream ssl_preread，拒绝继续域名 443 分流。"
   mkdir -p /etc/nginx/stream-conf.d /var/www/vps-init

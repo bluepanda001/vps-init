@@ -73,6 +73,51 @@ fi
 cmp -s "$VPSINIT_CLOUDFLARE_TOKEN_FILE" "$td/original-token"
 unset -f python3
 
+# apt/dpkg locking: cover the archives lock and the race where a lock
+# appears after the initial fuser check but before apt-get acquires it.
+(
+  FUSER_SEEN="$td/fuser-seen"
+  fuser() { printf '%s\n' "$1" >> "$FUSER_SEEN"; return 1; }
+  wait_apt_lock 3
+  grep -qx '/var/cache/apt/archives/lock' "$FUSER_SEEN"
+)
+
+(
+  APT_LOCK_ATTEMPTS=0
+  wait_apt_lock() { :; }
+  sleep() { :; }
+  apt-get() {
+    APT_LOCK_ATTEMPTS=$((APT_LOCK_ATTEMPTS+1))
+    if [[ "$APT_LOCK_ATTEMPTS" -eq 1 ]]; then
+      echo 'E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by another process' >&2
+      return 100
+    fi
+    return 0
+  }
+  VPSINIT_APT_LOCK_TIMEOUT=6
+  VPSINIT_APT_LOCK_RETRY_INTERVAL=3
+  apt_get_with_lock_retry install -y docker-ce
+  [[ "$APT_LOCK_ATTEMPTS" -eq 2 ]]
+)
+
+(
+  APT_NONLOCK_ATTEMPTS=0
+  wait_apt_lock() { :; }
+  sleep() { :; }
+  apt-get() {
+    APT_NONLOCK_ATTEMPTS=$((APT_NONLOCK_ATTEMPTS+1))
+    echo 'E: Unable to locate package definitely-not-a-package' >&2
+    return 100
+  }
+  VPSINIT_APT_LOCK_TIMEOUT=6
+  VPSINIT_APT_LOCK_RETRY_INTERVAL=3
+  if apt_get_with_lock_retry install -y definitely-not-a-package; then
+    echo 'FAIL: non-lock apt error was incorrectly treated as success' >&2
+    exit 1
+  fi
+  [[ "$APT_NONLOCK_ATTEMPTS" -eq 1 ]]
+)
+
 # Normal apply must ensure packages but must not perform a full apt upgrade.
 source core/system.sh
 APT_CALLS="$td/apt-calls"

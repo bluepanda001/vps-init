@@ -2,7 +2,10 @@
 set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
-for f in vps-init $(find . -type f -name '*.sh' ! -path './verify/selftest.sh' | sort); do bash -n "$f"; done
+for f in vps-init $(find . -type f -name '*.sh' ! -path './verify/selftest.sh' | sort); do
+  echo "SYNTAX_CHECK $f"
+  bash -n "$f"
+done
 python3 -m py_compile modules/3x-ui/xui_api.py modules/cloudflare/cloudflare.py modules/lucky/lucky_api.py optional/docker/merge_daemon.py verify/tests/test_lucky_behavior.py verify/tests/test_docker_merge.py
 find modules -type d -name '__pycache__' -prune -exec rm -rf {} +
 for p in base-only lucky-web reality-only nginx-reality lucky-reality; do
@@ -116,7 +119,7 @@ grep -q 'cmd+=(--ssh-key "$key")' lib/wizard.sh
 grep -q '\$NF=="vps-main"' lib/wizard.sh
 
 # V1.2.3: short-lived IP certificates must have a verified renewal mechanism.
-grep -q 'apt-get install -y -qq cron' modules/subscription/apply.sh
+grep -q 'apt_get_with_lock_retry install -y -qq cron' modules/subscription/apply.sh
 grep -q 'systemctl enable --now cron' modules/subscription/apply.sh
 grep -q -- '--install-cronjob' modules/subscription/apply.sh
 grep -q "acme\\.sh.*--cron" modules/subscription/apply.sh
@@ -310,11 +313,25 @@ if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
 fi
 grep -q 'cert_has_ip_san "$cert" "$SERVER_IP"' modules/subscription/apply.sh
 grep -q 'cert_key_match "$cert" "$key"' modules/subscription/apply.sh
-[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.12" ]]
+[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.13" ]]
 grep -q 'permitrootlogin_matches_expected' core/ssh.sh
 grep -q 'systemctl reset-failed ssh.service ssh.socket' core/ssh.sh
 grep -q 'ssh_rollback_unit_name' core/ssh.sh
 grep -q 'clear_ssh_rollback_marker' core/ssh.sh
+grep -q 'apt_get_with_lock_retry()' lib/common.sh
+grep -q '/var/cache/apt/archives/lock' lib/common.sh
+grep -q 'apt_get_with_lock_retry install -y docker-ce' optional/docker/apply.sh
+python3 - <<'PY_APT_LOCK'
+from pathlib import Path
+import re
+bad=[]
+for root in ("core","modules","optional"):
+    for p in Path(root).rglob("*.sh"):
+        for n,line in enumerate(p.read_text().splitlines(),1):
+            if re.match(r'^\s*apt-get\b', line) or re.match(r'^\s*[A-Z_][A-Z0-9_]*=[^ ]+\s+apt-get\b', line):
+                bad.append(f"{p}:{n}:{line.strip()}")
+assert not bad, "direct apt-get bypasses lock retry:\n" + "\n".join(bad)
+PY_APT_LOCK
 grep -q 'CertificateRemarkNameConflict' modules/lucky/lucky_api.py
 grep -q '16601/${safe}/version' lib/common.sh
 grep -q 'lucky_api() {' lib/common.sh
