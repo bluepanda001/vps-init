@@ -75,11 +75,27 @@ capture_ssh_baseline() {
   esac
 }
 
+# OpenSSH sshd -T prints the deprecated alias "without-password" for a
+# configured PermitRootLogin prohibit-password. Stage 1 still writes the
+# current keyword; the check has to accept the alias or the first real
+# verification aborts after the drop-in is already loaded.
+permitrootlogin_matches_expected() {
+  local expected="$1" effective="$2"
+  case "$expected" in
+    prohibit-password|without-password)
+      grep -Eqi '^permitrootlogin (prohibit-password|without-password)$' <<<"$effective"
+      ;;
+    *)
+      grep -qi "^permitrootlogin ${expected}$" <<<"$effective"
+      ;;
+  esac
+}
+
 verify_ssh_stage_policy() {
   local effective
   effective="$(sshd -T)"
   grep -qi '^pubkeyauthentication yes$' <<<"$effective" || die "Stage 1 未成功启用 PubkeyAuthentication。"
-  grep -qi "^permitrootlogin ${SSH_STAGE_PERMIT_ROOT}$" <<<"$effective" ||
+  permitrootlogin_matches_expected "$SSH_STAGE_PERMIT_ROOT" "$effective" ||
     die "Stage 1 未保持预期的 PermitRootLogin=${SSH_STAGE_PERMIT_ROOT}。"
   grep -qi "^passwordauthentication ${SSH_BASE_PASSWORD_AUTH}$" <<<"$effective" ||
     die "Stage 1 改变了原有 PasswordAuthentication；已停止。"
