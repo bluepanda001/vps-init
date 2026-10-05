@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 module_certbot_domain() {
   profile_has_domain || return 0
-  apt-get install -y certbot python3-certbot-dns-cloudflare
+  apt_get_with_lock_retry install -y certbot python3-certbot-dns-cloudflare
   local certdir="/etc/letsencrypt/live/${ROOT_DOMAIN}"
   local email_args=(--register-unsafely-without-email)
   [[ -n "$LE_EMAIL" ]] && email_args=(--email "$LE_EMAIL")
