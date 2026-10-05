@@ -2,7 +2,10 @@
 set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
-for f in vps-init $(find . -type f -name '*.sh' ! -path './verify/selftest.sh' | sort); do bash -n "$f"; done
+for f in vps-init $(find . -type f -name '*.sh' ! -path './verify/selftest.sh' | sort); do
+  echo "SYNTAX_CHECK $f"
+  bash -n "$f"
+done
 python3 -m py_compile modules/3x-ui/xui_api.py modules/cloudflare/cloudflare.py modules/lucky/lucky_api.py optional/docker/merge_daemon.py verify/tests/test_lucky_behavior.py verify/tests/test_docker_merge.py
 find modules -type d -name '__pycache__' -prune -exec rm -rf {} +
 for p in base-only lucky-web reality-only nginx-reality lucky-reality; do
