@@ -131,7 +131,7 @@ EOF2
 }
 
 ssh_rollback_unit_name() {
-  printf 'vps-init-ssh-rollback-%s-%s\n' "$(date +%s)" "$"
+  printf 'vps-init-ssh-rollback-%s-%s\n' "$(date +%s)" "$BASHPID"
 }
 
 clear_ssh_rollback_marker() {
