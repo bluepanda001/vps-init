@@ -1,5 +1,14 @@
 # Release Notes
 
+## v1.3.13
+
+- 修复真机封版验收中发现的 apt/dpkg 锁竞争：`unattended-upgrades` 可能在普通 `apply` 的后续 Docker 安装阶段抢到锁，导致 `apt-get install docker-ce` 偶发退出 100。
+- 新增统一的 `apt_get_with_lock_retry`：正常情况下先等待已有 apt/dpkg 锁；若在“检查锁”和真正执行 `apt-get` 之间发生竞态，只对明确的 lock error 自动等待并重试。
+- 锁检查补充 `/var/cache/apt/archives/lock`，覆盖 package archive 阶段。
+- Docker、Certbot、Nginx、订阅依赖、基础系统和 preflight 中的 apt 操作统一走锁安全 helper；bootstrap 安装器保持独立，不扩大启动阶段改动。
+- 非锁类 `apt-get` exit 100 不会被盲目重试，仍立即返回真实错误。
+- 新增行为测试：第一次模拟 dpkg lock 返回 100、第二次自动成功；普通包错误只执行一次；同时验证 archives lock 已纳入等待范围。
+
 ## v1.3.12
 
 - 修复 SSH Stage 1 在 Ubuntu 24.04 / OpenSSH 9.6 上立刻失败：配置写入的是 `PermitRootLogin prohibit-password`，但 `sshd -T` 实际输出 `without-password`。旧校验按字面量比较，Stage 1 在进入第二终端确认前就退出，10 分钟回滚任务却已经挂上。现在把这两个 key-only 别名视为同一策略。
