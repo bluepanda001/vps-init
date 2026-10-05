@@ -12,7 +12,7 @@ core_preflight() {
   [[ "${ID:-}" == "ubuntu" ]] || die "V1 仅支持 Ubuntu 24.04 LTS；当前: ${PRETTY_NAME:-unknown}"
   [[ "${VERSION_ID:-}" == "24.04" ]] || die "V1 仅支持 Ubuntu 24.04 LTS；当前: ${PRETTY_NAME:-unknown}"
 
-  if ! command_exists curl; then wait_apt_lock 300; apt-get update -qq; apt-get install -y curl; fi
+  if ! command_exists curl; then wait_apt_lock 300; apt_get_with_lock_retry update -qq; apt_get_with_lock_retry install -y curl; fi
   command_exists ip || die "缺少 iproute2。"
   command_exists ss || die "缺少 ss/iproute2。"
 
