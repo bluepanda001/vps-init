@@ -15,7 +15,7 @@ core_system() {
 
 core_system_upgrade() {
   require_root
-  log_warn "即将执行 apt_get_with_lock_retry update + apt_get_with_lock_retry -y upgrade；这可能更新内核/系统组件并产生 reboot-required。"
+  log_warn "即将执行 apt-get update + apt-get -y upgrade；这可能更新内核/系统组件并产生 reboot-required。"
   confirm "确认现在执行完整系统升级？" n || { echo "已取消系统升级。"; return 0; }
   wait_apt_lock 300
   export DEBIAN_FRONTEND=noninteractive
