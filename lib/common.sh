@@ -233,7 +233,19 @@ cert_key_match() {
 
 cert_has_ip_san() {
   local cert="$1" ip="$2"
-  openssl x509 -in "$cert" -noout -checkip "$ip" >/dev/null 2>&1
+  # OpenSSL versions shipped by Ubuntu may return zero for -checkip even on
+  # a mismatch. Parse complete SAN entries instead of trusting that exit code.
+  openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null |
+    python3 -c '
+import ipaddress, re, sys
+try:
+    expected = ipaddress.ip_address(sys.argv[1])
+    addresses = re.findall(r"IP Address:([^,\s]+)", sys.stdin.read())
+    matched = any(ipaddress.ip_address(value) == expected for value in addresses)
+except ValueError:
+    matched = False
+sys.exit(0 if matched else 1)
+' "$ip"
 }
 
 profile_has_domain() { [[ "$PROFILE" == "nginx-reality" || "$PROFILE" == "lucky-reality" || "$PROFILE" == "lucky-web" ]]; }
