@@ -60,7 +60,18 @@ jobs:
           rsync -a \
             --exclude '.git' \
             --exclude 'dist' \
+            --exclude 'docs' \
             --exclude 'config.env' \
+            --exclude '.env' \
+            --exclude '.env.*' \
+            --exclude '.secrets' \
+            --exclude 'secrets' \
+            --exclude '*.pem' \
+            --exclude '*.key' \
+            --exclude '*.p12' \
+            --exclude '*.pfx' \
+            --exclude 'id_rsa*' \
+            --exclude 'id_ed25519*' \
             --exclude '__pycache__' \
             --exclude '*.pyc' \
             --exclude '*.pyo' \
@@ -69,6 +80,16 @@ jobs:
           if find dist/stage/vps-init -type d -name '__pycache__' -print -quit | grep -q . || \
              find dist/stage/vps-init -type f \( -name '*.pyc' -o -name '*.pyo' \) -print -quit | grep -q .; then
             echo "Python bytecode/cache leaked into release staging." >&2
+            exit 1
+          fi
+
+          if find dist/stage/vps-init \
+               \( -type d \( -name '.secrets' -o -name 'secrets' \) \
+               -o -type f \( -name 'config.env' -o -name '.env' -o -name '.env.*' \
+                              -o -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' \
+                              -o -name 'id_rsa*' -o -name 'id_ed25519*' \) \) \
+               -print -quit | grep -q .; then
+            echo "Sensitive file leaked into release staging." >&2
             exit 1
           fi
 
