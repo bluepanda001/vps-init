@@ -2,6 +2,8 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
+V1.3.16 新增可选的 **TCPFit 网络调优**与 **TcpQuality IPv4 三网测速**入口；不会在任何 Profile 中自动运行，第三方入口固定上游 commit，默认 TcpQuality 不跑 IPv6、不上传排名。
+
 V1.3.10 修复 SSH 重复部署把 `ssh.socket` 重启到 systemd 启动次数上限、新连接没有 banner 的问题。端口已经在监听时只发送 SIGHUP；确实要重新绑定端口时，先 `reset-failed` 再重启套接字。V1.3.9 修复已开启安全入口后的 Lucky 重跑。V1.3.8 修复验收地址。V1.3.7 修复同名证书重跑。V1.3.6 仍是稳定性版本：优先修复 SSH 防锁机、Lucky 重跑保护、Docker 配置合并、Cloudflare Token/证书事务安全和 IP 证书身份校验；普通 `apply` 不再顺带执行完整系统升级。
 
 ## 一键安装
@@ -75,6 +77,36 @@ V1.3.6 起，普通 `vps-init apply` 以“尽量不破坏用户已有配置”�
 ```bash
 vps-init upgrade-system
 ```
+
+## 网络调优 / TCP 测速
+
+V1.3.16 新增独立网络工具入口。它们**不会在 `apply` 或任何 Profile 中自动执行**，只有主动选择时才运行：
+
+```bash
+vps-init network-tools
+```
+
+TCPFit：
+
+```bash
+vps-init tcpfit              # 进入 TCPFit 菜单；选 1 为一键调优
+vps-init tcpfit status       # 查看 TCPFit 当前状态
+vps-init tcpfit rollback     # 回滚到首次调优前快照
+```
+
+VPS Init 固定使用 TCPFit v0.5.9 的审阅提交，并校验上游提供的 SHA256；同时默认设置 `TCPFIT_NO_TELEMETRY=1`，关闭匿名运行计数。TCPFit 会修改 TCP/sysctl、qdisc、BBR/fq 和可能的出向整形，因此保持为显式可选工具，并保留上游完整回滚能力。
+
+TcpQuality 默认按当前使用习惯设置为 **仅 IPv4、北京/上海/广东三地三网、共 9 个节点**，不跑 IPv6，并默认禁止排名上传：
+
+```bash
+vps-init tcpquality           # 等同 speed：IPv4 三地三网单线程测速
+vps-init tcpquality full      # IPv4 丢包探测 + 三地三网测速
+vps-init tcpquality route     # IPv4 三网回程线路识别
+vps-init tcpquality gd        # 仅广东三网测速
+vps-init tcpquality raw ...   # 高级：显式透传上游参数
+```
+
+两个工具均使用固定上游 commit，避免 VPS Init 已发布版本因第三方 `main` 分支变化而静默改变行为。
 
 
 ## Profile
