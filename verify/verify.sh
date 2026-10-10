@@ -221,6 +221,12 @@ verify_all() {
     if grep -qi '^pubkeyauthentication yes$' <<<"$sshd_effective"; then echo '[OK]   SSH pubkey auth enabled'; else echo '[FAIL] SSH pubkey auth disabled'; failed=1; fi
     if grep -Eqi '^permitrootlogin (prohibit-password|without-password)$' <<<"$sshd_effective"; then echo '[OK]   root SSH is key-only'; else echo '[FAIL] root SSH policy is not key-only'; failed=1; fi
     check "UFW active" bash -c "ufw status | grep '^Status: active' >/dev/null"
+    for fw_port in 22 80 443; do
+      check "UFW IPv4 TCP ${fw_port} allowed" vpsinit_ufw_tcp_allowed "$fw_port"
+    done
+    if [[ "$SSH_PORT" != 22 ]]; then
+      check "UFW custom SSH TCP ${SSH_PORT} allowed" vpsinit_ufw_tcp_allowed "$SSH_PORT"
+    fi
     check "Fail2ban active" systemctl is-active --quiet fail2ban
     check "Unattended upgrades active" systemctl is-active --quiet unattended-upgrades
     [[ "$cc" == bbr ]] && echo '[OK]   BBR active' || echo '[WARN] BBR not active'
@@ -244,6 +250,8 @@ verify_all() {
       if is_true "$ENABLE_SUBSCRIPTION_RESOLVED"; then
         if [[ "$SUBSCRIPTION_EXPOSE_MODE_RESOLVED" == direct-ip-https ]]; then
           check "IP certificate valid >24h" openssl x509 -checkend 86400 -noout -in "$IP_CERT_FILE"
+          check "IP short-lived cert renewal cron active" systemctl is-active --quiet cron
+          check "IP short-lived cert renewal scheduled" bash -c 'crontab -l 2>/dev/null | grep -Eq "acme\\.sh.*--cron"'
           if [[ -n "${SUB_ID:-}" ]]; then
             check "public IP HTTPS subscription" curl -fsS --max-time 10 --connect-to "${SERVER_IP}:${SUBSCRIPTION_PORT}:127.0.0.1:${SUBSCRIPTION_PORT}" -o /dev/null "https://${SERVER_IP}:${SUBSCRIPTION_PORT}${SUBSCRIPTION_PATH}${SUB_ID}"
             check "Mihomo UA receives Clash YAML" verify_mihomo_direct
