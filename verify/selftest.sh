@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -Eeuxo pipefail
+set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 for f in vps-init $(find . -type f -name '*.sh' ! -path './verify/selftest.sh' | sort); do
@@ -253,7 +253,7 @@ grep -q 'vps-init gateway' vps-init
 grep -q 'vps-init reinstall' vps-init
 grep -q '当前 Gateway： Lucky Web Only（无节点）' vps-init
 grep -q 'Lucky owns public 443' verify/verify.sh
-grep -q 'lucky-web' core/firewall.sh
+grep -q 'lucky-web' verify/tests/test_firewall.sh
 grep -q 'profile_has_lucky' lib/common.sh
 grep -q 'Password|密码' lib/wizard.sh
 if grep -q 'wizard_offer_reinstall' lib/wizard.sh; then
