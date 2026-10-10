@@ -1,5 +1,13 @@
 # Release Notes
 
+## v1.3.16
+
+- 新增“网络调优 / TCP 测速”工具入口，不自动改变任何现有 Profile；仅在用户主动运行时执行。
+- 集成 TCPFit v0.5.9，固定到上游 commit `38fbf5af30daf87735f2ffbc5e0905033ee2b86e`，入口脚本按上游 SHA256 校验；VPS Init 默认关闭 TCPFit 匿名运行计数。
+- 新增 `vps-init tcpfit`，支持直接进入 TCPFit 菜单，也可透传 `status`、`rollback` 等上游子命令。
+- 集成 TcpQuality，固定到上游 commit `1b58a192c881e9eb500910997f14fde7c2c607ef`；默认 `vps-init tcpquality` 只跑 IPv4 北京/上海/广东三地三网单线程测速，不跑 IPv6、不上传排名。
+- `vps-init tcpquality full` 提供 IPv4 丢包探测 + 三网测速，`route` 提供 IPv4 三网回程识别，`gd` 保留仅广东测速，`raw` 可显式透传上游参数。
+
 ## v1.3.15
 
 - 安全收口：移除仓库中的真机验收报告，避免公开真实 VPS IP、域名、SSH 用户/端口、服务端口拓扑等基础设施信息。
