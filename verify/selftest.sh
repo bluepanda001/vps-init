@@ -301,6 +301,7 @@ grep -q 'https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}' vps-init
 python3 verify/tests/test_lucky_behavior.py
 python3 verify/tests/test_docker_merge.py
 bash verify/tests/test_shell_behaviors.sh
+bash verify/tests/test_firewall.sh
 python3 verify/tests/test_ssh_rollback.py
 
 # Stability v1.3.6: behavioral regression coverage and safety boundaries.
@@ -335,7 +336,7 @@ if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
 fi
 grep -q 'cert_has_ip_san "$cert" "$SERVER_IP"' modules/subscription/apply.sh
 grep -q 'cert_key_match "$cert" "$key"' modules/subscription/apply.sh
-[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.16" ]]
+[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.17" ]]
 grep -q 'permitrootlogin_matches_expected' core/ssh.sh
 grep -q 'systemctl reset-failed ssh.service ssh.socket' core/ssh.sh
 grep -q 'ssh_rollback_unit_name' core/ssh.sh
