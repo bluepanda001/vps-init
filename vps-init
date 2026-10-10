@@ -10,6 +10,7 @@ source "$ROOT_DIR/lib/validate.sh"
 source "$ROOT_DIR/lib/service.sh"
 source "$ROOT_DIR/lib/wizard.sh"
 source "$ROOT_DIR/lib/credentials.sh"
+source "$ROOT_DIR/lib/network_tools.sh"
 source "$ROOT_DIR/core/preflight.sh"
 source "$ROOT_DIR/core/system.sh"
 source "$ROOT_DIR/core/swap.sh"
@@ -55,6 +56,9 @@ VPS Init ${VPSINIT_VERSION}
   vps-init reinstall            # 单独进入系统重装 / 一键 DD
   vps-init update
   vps-init upgrade-system        # 手动执行完整 apt upgrade
+  vps-init network-tools          # 网络调优 / TCP 测速菜单
+  vps-init tcpfit [args]          # TCPFit 调优（固定上游版本）
+  vps-init tcpquality [mode]      # IPv4 三网测速；默认 speed
   vps-init logs
 TXT
 }
@@ -446,10 +450,11 @@ menu() {
  11. 重新运行核心安装向导
  12. 系统重装 / 一键 DD
  13. 系统完整升级（apt upgrade）
+ 14. 网络调优 / TCP 测速
   0. 退出
 TXT
     local n
-    read -r -p "请选择 [0-13]: " n
+    read -r -p "请选择 [0-14]: " n
     case "$n" in
       1)
         if [[ -f "$DEFAULT_CFG" ]]; then
@@ -484,6 +489,7 @@ TXT
         ;;
       12) "$ROOT_DIR/vps-init" reinstall; exit 0 ;;
       13) core_system_upgrade || true ;;
+      14) network_tools_menu || true ;;
       0) exit 0 ;;
       *) echo "输入无效。" ;;
     esac
@@ -513,6 +519,9 @@ case "$cmd" in
   logs) require_root; show_logs; exit 0 ;;
   update) require_root; update_self; exit 0 ;;
   upgrade-system) require_root; core_system_upgrade; exit 0 ;;
+  network-tools) require_root; network_tools_menu; exit 0 ;;
+  tcpfit) require_root; network_tools_tcpfit "${@:2}"; exit $? ;;
+  tcpquality) require_root; network_tools_tcpquality "${@:2}"; exit $? ;;
   status) require_root; show_status_summary "$cfg"; exit 0 ;;
   info) require_root; show_info_summary "$cfg"; exit 0 ;;
   apply|verify|preflight) ;;
