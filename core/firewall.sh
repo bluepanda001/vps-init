@@ -62,6 +62,16 @@ remove_stale_vps_init_ufw_rules() {
   die "存在过多过期 UFW 规则（超过 100 条），停止自动清理，防止误操作。"
 }
 
+
+# Verify the unrestricted IPv4 allow rule; a v6-only rule is insufficient for
+# IPv4 HTTP-01 validation. This checks presence, not an external end-to-end
+# network probe (cloud-provider firewalls can still block inbound traffic).
+vpsinit_ufw_tcp_allowed() {
+  local port="$1"
+  ufw status 2>/dev/null |
+    grep -Eq "^${port}/tcp[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+Anywhere([[:space:]]|$)"
+}
+
 core_firewall() {
   log_info "配置 UFW（所有 Profile 默认 TCP 22/80/443；UDP 按需）..."
   mkdir -p "$BACKUP_DIR/ufw"
