@@ -308,13 +308,26 @@ grep -q 'systemd-run --quiet --unit=' core/ssh.sh
 grep -q 'render_ssh_stage_config' core/ssh.sh
 grep -q 'VPSINIT_VERSION=' vps-init
 grep -q 'vps-init upgrade-system' vps-init
+grep -q 'source "$ROOT_DIR/lib/network_tools.sh"' vps-init
+grep -q 'vps-init network-tools' vps-init
+grep -q 'network_tools_tcpfit' lib/network_tools.sh
+grep -q '38fbf5af30daf87735f2ffbc5e0905033ee2b86e' lib/network_tools.sh
+grep -q '8331cc40950229a3280ce32406330a85b1a3d21ba398a4db3dc7e25c39783741' lib/network_tools.sh
+grep -q 'TCPFIT_NO_TELEMETRY=1' lib/network_tools.sh
+grep -q '1b58a192c881e9eb500910997f14fde7c2c607ef' lib/network_tools.sh
+grep -q 'args=(-v4 --only-speedtest --no-rank-upload)' lib/network_tools.sh
+grep -q 'args=(-v4 --speedtest --no-rank-upload)' lib/network_tools.sh
+grep -q 'args=(-v4 --route --route-protocol tcp)' lib/network_tools.sh
+if grep -q 'network_tools_tcpfit\|network_tools_tcpquality' vps-init | grep -q 'apply'; then
+  echo 'FAIL: network tools must remain opt-in and outside apply flow' >&2; exit 1
+fi
 if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
   echo 'FAIL: Cloudflare validation must not delete the saved token before replacement' >&2
   exit 1
 fi
 grep -q 'cert_has_ip_san "$cert" "$SERVER_IP"' modules/subscription/apply.sh
 grep -q 'cert_key_match "$cert" "$key"' modules/subscription/apply.sh
-[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.15" ]]
+[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.16" ]]
 grep -q 'permitrootlogin_matches_expected' core/ssh.sh
 grep -q 'systemctl reset-failed ssh.service ssh.socket' core/ssh.sh
 grep -q 'ssh_rollback_unit_name' core/ssh.sh
