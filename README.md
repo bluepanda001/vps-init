@@ -360,8 +360,16 @@ Ubuntu 24.04 的 `ssh.socket` 在修改端口时会执行 `daemon-reload` + 重�
 
 ## 状态与防火墙安全
 
+v1.3.17 起，不论 Base Only、Lucky Web Only、Reality Only、Nginx + Reality 或 Lucky + Reality，**UFW 均默认放行 TCP 22、80、443**。TCP 22 是统一 SSH 兜底端口，80 用于 HTTP/ACME 验证预留，443 用于 HTTPS/Reality。**默认不开放任何 UDP**；需要 UDP 服务时按实际端口手动配置。
+
+自定义 SSH 端口会在 TCP 22 以外额外放行；Reality Only 的公网订阅端口（及显式 direct-ip-https 配置）按需额外放行。开放 UFW 端口并不意味着该端口一定有程序监听。
+
+每次 apply 先确认需要的 TCP 放行，再清理**仅带 vps-init 标记**且已过时的 TCP 规则；保持未标记的人工 TCP/UDP 规则原样。绝不运行 `ufw --force reset`。已有 active UFW 的默认入站/出站策略保持不变；仅首次启用时设置默认拒绝入站、允许出站。
+
+SSH 继续沿用两阶段公钥验证和 10 分钟自动回滚，未验证前不关闭密码登录。Reality Only 的 IP 短期证书还要求 acme.sh 自动续期任务存在且 cron active；完整验收会检查这些条件。**仍须保证 VPS 服务商的云防火墙/安全组允许公网 TCP 80**，并确保续签期间 standalone ACME 验证程序可以监听 80，否则仅配置 UFW 不足以保证续签成功。
+
 - `DEPLOYED_PROFILE` 只会在完整 `verify` 通过后写入；单独运行 preflight 或中途失败不会占住 Profile。
-- `apply` 不再执行 `ufw --force reset`。项目只删除/重建带 `vps-init` 注释的规则，管理员手工添加的其他 UFW 放行规则会保留；默认入站/出站策略仍由项目设置。
+- `apply` 不再执行 `ufw --force reset`；管理员的规则与已启用 UFW 的默认策略保留，旧的 vps-init TCP 规则只在必要时逐条清理。
 - Reality API helper 不会把服务端 X25519 私钥写到 JSON 输出。
 
 ## 安装后的菜单

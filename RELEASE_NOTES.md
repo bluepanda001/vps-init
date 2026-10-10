@@ -1,5 +1,14 @@
 # Release Notes
 
+## v1.3.17
+
+- 所有 Profile 的 UFW 统一默认放行 TCP 22、80、443；UDP 不自动开放，需管理员按具体服务需求手动允许。
+- 自定义 SSH 端口在 TCP 22 之外额外放行；直连 IP HTTPS 订阅端口仍按 Profile/配置按需开放。
+- 调整防锁死顺序：先确保需要的 TCP 端口放行，再逐条删除过期的 vps-init TCP 规则；不重置已有 UFW 规则、不删除手动规则。
+- 已启用的 UFW 保留现有默认策略；首次启用时先放行 SSH/80/443，再设置 deny incoming / allow outgoing 并启用。
+- 验收新增三个 TCP 基础端口、附加 SSH 端口检查；Reality Only 额外确认 IP 短期证书自动续签 cron 正在运行并已设置。
+- 新增纯模拟 UFW 行为测试，覆盖所有五种 Profile、首次安装、重跑幂等、旧项目规则清理及人工 TCP/UDP 规则保留。
+
 ## v1.3.16
 
 - 新增“网络调优 / TCP 测速”工具入口，不自动改变任何现有 Profile；仅在用户主动运行时执行。

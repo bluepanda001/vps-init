@@ -68,8 +68,8 @@ core_preflight() {
       fi
     fi
     if command_exists ufw && ufw status 2>/dev/null | grep '^Status: active' >/dev/null; then
-      log_warn "检测到已有 UFW 规则。apply 会保留人工规则，只刷新带 vps-init 注释的项目规则，并设置默认入站/出站策略。"
-      if ! confirm "允许 vps-init 管理自己的 UFW 规则并设置默认策略？" n; then
+      log_warn "检测到已有 UFW。apply 将保留现有规则和默认策略；先确保 TCP 22/80/443 与当前 SSH 端口放行，再清理过期的项目 TCP 规则。UDP 不会自动开放。"
+      if ! confirm "允许 vps-init 安全补充基础 TCP 端口并管理过期项目规则？" n; then
         die "未授权修改 UFW，已停止。"
       fi
     fi
