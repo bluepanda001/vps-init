@@ -9,6 +9,7 @@ TCPFIT_SHA256="8331cc40950229a3280ce32406330a85b1a3d21ba398a4db3dc7e25c39783741"
 TCPFIT_URL="https://raw.githubusercontent.com/Kylin010/tcpfit/${TCPFIT_REF}/tcpfit.sh"
 
 TCPQUALITY_REF="1b58a192c881e9eb500910997f14fde7c2c607ef"
+TCPQUALITY_ENTRY_BLOB_SHA1="a115699ba3bd5ef8c7a975d3c8e50a130fdf4331"
 TCPQUALITY_RAW_BASE="https://raw.githubusercontent.com/ibsgss/TcpQuality/${TCPQUALITY_REF}"
 TCPQUALITY_URL="${TCPQUALITY_RAW_BASE}/runTcpQuality.sh"
 
@@ -97,6 +98,18 @@ EOF
 
   tmp="$(mktemp "${TMPDIR:-/tmp}/vps-init-tcpquality.XXXXXX")"
   network_tools_download "$TCPQUALITY_URL" "$tmp"
+
+  command -v sha1sum >/dev/null 2>&1 || {
+    rm -f "$tmp"
+    die "缺少 sha1sum，无法校验 TcpQuality。"
+  }
+  local size blob_sha
+  size="$(wc -c < "$tmp" | tr -d '[:space:]')"
+  blob_sha="$({ printf 'blob %s\0' "$size"; cat "$tmp"; } | sha1sum | awk '{print $1}')"
+  if [[ "$blob_sha" != "$TCPQUALITY_ENTRY_BLOB_SHA1" ]]; then
+    rm -f "$tmp"
+    die "TcpQuality Git blob 校验失败；已拒绝执行。"
+  fi
 
   export TCPQUALITY_RAW_BASE
   TCPQUALITY_ROOTFS_SOURCE_ORDER=github bash "$tmp" "${args[@]}" || rc=$?
