@@ -20,7 +20,7 @@ printf 'active\n' > "$ACTIVE"
 ufw() {
   printf '%s\n' "$*" >> "$CALLS"
   if [[ "$1" == status ]]; then
-    if [[ "$2" == numbered ]]; then
+    if [[ "${2:-}" == numbered ]]; then
       local i=0 port proto comment
       while IFS='|' read -r port proto comment; do
         [[ -n "$port" ]] || continue
