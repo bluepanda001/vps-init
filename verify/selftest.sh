@@ -318,9 +318,17 @@ grep -q '1b58a192c881e9eb500910997f14fde7c2c607ef' lib/network_tools.sh
 grep -q 'args=(-v4 --only-speedtest --no-rank-upload)' lib/network_tools.sh
 grep -q 'args=(-v4 --speedtest --no-rank-upload)' lib/network_tools.sh
 grep -q 'args=(-v4 --route --route-protocol tcp)' lib/network_tools.sh
-if grep -q 'network_tools_tcpfit\|network_tools_tcpquality' vps-init | grep -q 'apply'; then
-  echo 'FAIL: network tools must remain opt-in and outside apply flow' >&2; exit 1
-fi
+grep -q 'a115699ba3bd5ef8c7a975d3c8e50a130fdf4331' lib/network_tools.sh
+python3 - <<'PY_NETWORK_TOOLS'
+from pathlib import Path
+s=Path("vps-init").read_text()
+deploy=s.index('log_info "开始部署 Profile')
+tail=s[deploy:]
+assert "network_tools_tcpfit" not in tail
+assert "network_tools_tcpquality" not in tail
+assert 'tcpfit) require_root; network_tools_tcpfit' in s[:deploy]
+assert 'tcpquality) require_root; network_tools_tcpquality' in s[:deploy]
+PY_NETWORK_TOOLS
 if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
   echo 'FAIL: Cloudflare validation must not delete the saved token before replacement' >&2
   exit 1
