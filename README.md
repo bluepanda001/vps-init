@@ -2,6 +2,8 @@
 
 用于 **Ubuntu 24.04 LTS VPS 自动化初始化、配置与验收**。
 
+V1.3.16 新增可选的 **TCPFit 网络调优**与 **TcpQuality IPv4 三网测速**入口；不会在任何 Profile 中自动运行，第三方入口固定上游 commit，默认 TcpQuality 不跑 IPv6、不上传排名。
+
 V1.3.10 修复 SSH 重复部署把 `ssh.socket` 重启到 systemd 启动次数上限、新连接没有 banner 的问题。端口已经在监听时只发送 SIGHUP；确实要重新绑定端口时，先 `reset-failed` 再重启套接字。V1.3.9 修复已开启安全入口后的 Lucky 重跑。V1.3.8 修复验收地址。V1.3.7 修复同名证书重跑。V1.3.6 仍是稳定性版本：优先修复 SSH 防锁机、Lucky 重跑保护、Docker 配置合并、Cloudflare Token/证书事务安全和 IP 证书身份校验；普通 `apply` 不再顺带执行完整系统升级。
 
 ## 一键安装
