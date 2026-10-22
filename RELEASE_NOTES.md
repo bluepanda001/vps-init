@@ -1,5 +1,11 @@
 # Release Notes
 
+## v1.3.20
+
+- 3x-ui 默认将 Freedom Protocol Strategy 设置为 `UseIPv4v6`，通过 Xray Settings API 保存并验收；同时设置面板兼容字段与当前 Xray 的 `streamSettings.sockopt.domainStrategy`。
+- 自定义安装改为组件级选择：是否安装 3x-ui + Reality、是否安装 Lucky、选择 Nginx HTTPS 入口、是否启用 Cloudflare CDN WS、是否安装 Docker；对 WS / 443 复用所需的 Nginx 依赖自动适配。
+- 保留快速安装的原有预设 Profile；新增组件组合映射和 Xray 模板更新的回归测试。
+
 ## v1.3.19
 
 - 修复 `lucky-reality` 默认未创建 `lucky.<根域名>` DNS 记录、未配置 Lucky 管理面板反代的问题。
