@@ -444,7 +444,7 @@ wizard_collect() {
       while true; do
         profile_choice="$(wizard_select "请选择部署模式：" \
           "Base Only - 仅系统初始化/安全/BBR/Swap，不安装节点或 Web Gateway" \
-          "Lucky Web Only - Base + Lucky + Cloudflare 域名/SSL，不安装任何节点（推荐 Web 服务器）" \
+          "Lucky Web Only - Base + Docker + Lucky + Cloudflare 域名/SSL，不安装任何节点（推荐 Web 服务器）" \
           "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
           "Lucky + Reality - 图形化 Web Gateway + Reality，共用公网 443，需要 Cloudflare 域名" \
           "Nginx + Reality - 轻量/高级：纯 Nginx 配置 + Reality，需要 Cloudflare 域名" \
