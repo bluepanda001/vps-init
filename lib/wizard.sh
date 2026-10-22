@@ -27,24 +27,17 @@ wizard_select() {
   done
 }
 
-wizard_profile_from_components() {
-  local node_enabled="$1" gateway="$2" ws_enabled="$3"
-  case "${node_enabled}:${gateway}" in
-    true:none)
-      if [[ "$ws_enabled" == true ]]; then printf "nginx-reality\n"; else printf "reality-only\n"; fi
-      ;;
-    true:lucky) printf "lucky-reality\n" ;;
-    true:nginx) printf "nginx-reality\n" ;;
-    false:none)
-      [[ "$ws_enabled" != true ]] || return 1
-      printf "base-only\n"
-      ;;
-    false:lucky)
-      [[ "$ws_enabled" != true ]] || return 1
-      printf "lucky-web\n"
-      ;;
+wizard_set_profile_choice() {
+  case "$1" in
+    1) W_PROFILE="reality-only"; W_INSTALL_NODE="true";  W_GATEWAY="none" ;;
+    2) W_PROFILE="lucky-reality"; W_INSTALL_NODE="true";  W_GATEWAY="lucky" ;;
+    3) W_PROFILE="nginx-reality"; W_INSTALL_NODE="true";  W_GATEWAY="nginx" ;;
+    4) W_PROFILE="lucky-web";     W_INSTALL_NODE="false"; W_GATEWAY="lucky" ;;
+    5) W_PROFILE="base-only";     W_INSTALL_NODE="false"; W_GATEWAY="none" ;;
     *) return 1 ;;
   esac
+  W_ENABLE_CF_WS="false"
+  W_ENABLE_DOCKER="false"
 }
 
 wizard_yesno() {
@@ -399,63 +392,49 @@ wizard_collect() {
 
   # Normal installation starts directly with install mode/profile. Destructive
   # reinstall is intentionally a separate `vps-init reinstall` workflow.
-  local mode_choice profile_choice current_port custom
+  local mode_choice profile_choice current_port custom advanced_prompt
+  W_CUSTOM_ADVANCED="false"
   while true; do
     mode_choice="$(wizard_select "安装方式：" \
-      "快速安装（推荐：沿用当前 SSH 端口，只问必要项目）" \
-      "自定义安装（独立选择节点、Lucky、Nginx、CDN WS、Docker 等组件）")"
+      "快速安装（默认参数，推荐）" \
+      "自定义安装（按需启用可选功能/高级参数）")"
     custom="false"
     [[ "$mode_choice" == 2 ]] && custom="true"
 
+    profile_choice="$(wizard_select "部署方案（选一项即可，依赖组件会自动配置）：" \
+      "Reality 节点（IP 直连，不需要域名）" \
+      "Reality + Lucky（需要域名，自动配置 443 复用）" \
+      "Reality + Nginx（需要域名，HTTPS 入口）" \
+      "仅 Lucky Web 服务（需要域名，不部署代理节点）" \
+      "仅系统初始化（不安装节点或 Web 网关）")"
+    wizard_set_profile_choice "$profile_choice" || die "部署方案无效。"
+
     if [[ "$custom" == true ]]; then
-      local node_choice gateway_choice
-      if wizard_yesno "安装 3x-ui + VLESS Reality 节点？" y; then
-        W_INSTALL_NODE="true"
-        gateway_choice="$(wizard_select "Web Gateway 组件：" \
-          "不安装 Web Gateway（Reality 直接监听公网 443）" \
-          "安装 Lucky（需要域名；Reality 组合会自动用 Nginx Stream 复用 443）" \
-          "安装 Nginx HTTPS 入口（需要域名）")"
-        case "$gateway_choice" in
-          1) W_GATEWAY="none" ;;
-          2) W_GATEWAY="lucky" ;;
-          3) W_GATEWAY="nginx" ;;
-        esac
-        W_ENABLE_CF_WS="false"
-        if wizard_yesno "额外部署 Cloudflare CDN WS 备用节点（edge.<域名>）？" n; then
+      if [[ "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "nginx-reality" ]]; then
+        if wizard_yesno "额外启用 Cloudflare CDN WS 备用节点？" n; then
           W_ENABLE_CF_WS="true"
         fi
-      else
-        W_INSTALL_NODE="false"
-        gateway_choice="$(wizard_select "Web Gateway 组件：" \
-          "不安装 Web Gateway" \
-          "只安装 Lucky（Lucky 直接监听公网 443，需要域名）")"
-        case "$gateway_choice" in
-          1) W_GATEWAY="none" ;;
-          2) W_GATEWAY="lucky" ;;
-        esac
-        W_ENABLE_CF_WS="false"
       fi
-      W_PROFILE="$(wizard_profile_from_components "$W_INSTALL_NODE" "$W_GATEWAY" "$W_ENABLE_CF_WS")" || die "所选组件组合无效。"
-      W_ENABLE_DOCKER="false"
-      if [[ "$W_INSTALL_NODE" == true && "$W_GATEWAY" == none && "$W_ENABLE_CF_WS" == true ]]; then
-        echo "提示：CDN WS 需要域名和 Nginx TLS/SNI 入口，已自动选择 Nginx + Reality 拓扑。"
+      if wizard_yesno "额外安装 Docker Engine/Compose（供后续容器应用使用）？" n; then
+        W_ENABLE_DOCKER="true"
+      fi
+
+      case "$W_PROFILE" in
+        base-only|lucky-web)
+          advanced_prompt="需要修改高级参数（SSH 端口）？"
+          ;;
+        *)
+          advanced_prompt="需要修改高级参数（SSH 端口、Reality Target、面板/订阅路径）？"
+          ;;
+      esac
+      if wizard_yesno "$advanced_prompt" n; then
+        W_CUSTOM_ADVANCED="true"
       fi
     else
-      profile_choice="$(wizard_select "请选择部署模式：" \
-        "Base Only - 仅系统初始化/安全/BBR/Swap，不安装节点或 Web Gateway" \
-        "Lucky Web Only - Base + Docker + Lucky + Cloudflare 域名/SSL，不安装任何节点（推荐 Web 服务器）" \
-        "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
-        "Lucky + Reality - 图形化 Web Gateway + Reality，共用公网 443，需要 Cloudflare 域名" \
-        "Nginx + Reality - 轻量/高级：纯 Nginx 配置 + Reality，需要 Cloudflare 域名" \
-        "返回安装方式")"
-      [[ "$profile_choice" == 6 ]] && continue
-      case "$profile_choice" in
-        1) W_PROFILE="base-only" ;;
-        2) W_PROFILE="lucky-web" ;;
-        3) W_PROFILE="reality-only" ;;
-        4) W_PROFILE="lucky-reality" ;;
-        5) W_PROFILE="nginx-reality" ;;
-      esac
+      [[ "$W_PROFILE" == "lucky-web" ]] && W_ENABLE_DOCKER="true"
+      if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
+        W_ENABLE_CF_WS="true"
+      fi
     fi
     break
   done
@@ -481,7 +460,7 @@ wizard_collect() {
   W_PROVIDER="$(wizard_prompt_default "VPS 服务商（用于名称/报告，例如 racknerd、vmiss）" "vps")"
   W_SERVER_NAME="$(wizard_prompt_default "这台 VPS 的名称（同时建议作为 Netcatty Identity 名称）" "${W_PROVIDER}-${W_SERVER_IP}")"
   current_port="$(wizard_detect_ssh_port)"
-  if [[ "$custom" == true ]]; then
+  if [[ "$custom" == true && "$W_CUSTOM_ADVANCED" == true ]]; then
     W_SSH_PORT="$(wizard_prompt_default "SSH 端口" "$current_port")"
   else
     W_SSH_PORT="$current_port"
@@ -502,7 +481,7 @@ wizard_collect() {
   fi
 
   W_REALITY_TARGET_MODE="auto"; W_REALITY_TARGET=""
-  if [[ "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" && "$custom" == true ]]; then
+  if [[ "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" && "$custom" == true && "$W_CUSTOM_ADVANCED" == true ]]; then
     local target_choice
     target_choice="$(wizard_select "Reality Target：" "自动检测并推荐（推荐）" "手动填写")"
     if [[ "$target_choice" == 2 ]]; then
@@ -514,18 +493,7 @@ wizard_collect() {
   W_PANEL_PATH="/zhg/"
   W_SUB_PATH="/zhg/"
   W_SUBSCRIPTION_PORT="2096"
-  if [[ "$custom" != true ]]; then
-    W_ENABLE_DOCKER="false"
-    [[ "$W_PROFILE" == "lucky-web" ]] && W_ENABLE_DOCKER="true"
-    W_ENABLE_CF_WS="false"
-    if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
-      W_ENABLE_CF_WS="true"
-    fi
-  else
-    # WS was selected independently above. Docker is asked separately below.
-    W_ENABLE_DOCKER="false"
-  fi
-  if [[ "$custom" == true && "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" ]]; then
+  if [[ "$custom" == true && "$W_CUSTOM_ADVANCED" == true && "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" ]]; then
     W_PANEL_PATH="$(normalize_path "$(wizard_prompt_default "3x-ui 面板 URI Path" "/zhg/")")"
     local sub_input
     sub_input="$(wizard_prompt_default "订阅 URI Path" "/zhg/")"
@@ -533,61 +501,58 @@ wizard_collect() {
     W_SUBSCRIPTION_PORT="$(wizard_prompt_default "3x-ui Subscription 内部/直连端口" "2096")"
     [[ "$W_SUBSCRIPTION_PORT" =~ ^[0-9]+$ ]] && ((W_SUBSCRIPTION_PORT>=1 && W_SUBSCRIPTION_PORT<=65535)) || die "订阅端口无效。"
   fi
-  if [[ "$custom" == true ]]; then
-    if wizard_yesno "同时安装 Docker Engine/Compose？" n; then W_ENABLE_DOCKER="true"; else W_ENABLE_DOCKER="false"; fi
+  echo
+  echo "================ 部署确认 ================"
+  case "$W_PROFILE" in
+    reality-only)  echo "方案：Reality 节点（IP 直连）" ;;
+    lucky-reality) echo "方案：Reality + Lucky（自动复用 443）" ;;
+    nginx-reality) echo "方案：Reality + Nginx（HTTPS 入口）" ;;
+    lucky-web)     echo "方案：仅 Lucky Web 服务" ;;
+    base-only)     echo "方案：仅系统初始化" ;;
+  esac
+  echo "服务器：$W_SERVER_NAME"
+  echo "公网 IP：$W_SERVER_IP"
+  echo "SSH 端口：$W_SSH_PORT"
+  [[ -n "$W_ROOT_DOMAIN" ]] && echo "根域名：$W_ROOT_DOMAIN"
+
+  if [[ "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" ]]; then
+    echo
+    echo "节点配置"
+    echo "  3x-ui + VLESS Reality：安装"
+    echo "  面板路径：$W_PANEL_PATH"
+    echo "  订阅路径/端口：$W_SUB_PATH / $W_SUBSCRIPTION_PORT"
+    echo "  Reality Target：${W_REALITY_TARGET_MODE}${W_REALITY_TARGET:+ ($W_REALITY_TARGET)}"
+    echo "  Clash/Mihomo 订阅：启用"
+    if [[ -n "${W_XUI_USERNAME_INPUT:-}${W_XUI_PASSWORD_INPUT:-}" ]]; then
+      echo "  3x-ui 账号密码：使用自定义值"
+    else
+      echo "  3x-ui 账号密码：保持现有值或自动生成"
+    fi
+  fi
+
+  if [[ "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
+    echo
+    echo "Web 服务"
+    echo "  Lucky：安装"
+    [[ "$W_PROFILE" == "lucky-web" ]] && echo "  Lucky 管理域名：lucky.$W_ROOT_DOMAIN"
+    if [[ -n "${W_LUCKY_USERNAME_INPUT:-}${W_LUCKY_PASSWORD_INPUT:-}" ]]; then
+      echo "  Lucky 账号密码：使用自定义值"
+    else
+      echo "  Lucky 账号密码：保持现有值或自动生成"
+    fi
+  elif [[ "$W_PROFILE" == "nginx-reality" ]]; then
+    echo
+    echo "Web 入口"
+    echo "  Nginx HTTPS：安装"
   fi
 
   echo
-  echo "---------------- 部署摘要 ----------------"
-  echo "Profile           : $W_PROFILE"
-  if [[ "$custom" == true ]]; then
-    echo "Node / 3x-ui      : $W_INSTALL_NODE"
-    if [[ "$W_GATEWAY" == lucky ]]; then echo "Lucky             : enabled"; else echo "Lucky             : disabled"; fi
-    case "$W_PROFILE" in
-      lucky-reality) echo "Nginx             : auto (443 SNI multiplexing for Reality + Lucky)" ;;
-      nginx-reality)
-        if [[ "$W_GATEWAY" == none && "$W_ENABLE_CF_WS" == true ]]; then
-          echo "Nginx             : auto (required for CDN WS TLS/SNI ingress)"
-        else
-          echo "Nginx             : enabled (HTTPS gateway)"
-        fi
-        ;;
-      lucky-web) echo "Nginx             : not needed (Lucky direct :443)" ;;
-      *) echo "Nginx             : disabled" ;;
-    esac
-  fi
-  echo "IPv4              : $W_SERVER_IP"
-  echo "SSH Port          : $W_SSH_PORT"
-  [[ -n "$W_ROOT_DOMAIN" ]] && echo "Root Domain       : $W_ROOT_DOMAIN"
-  if [[ "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" ]]; then
-    echo "Panel URI         : $W_PANEL_PATH"
-    echo "Subscription URI  : $W_SUB_PATH"
-    echo "Subscription Port : $W_SUBSCRIPTION_PORT"
-    echo "Reality Target    : ${W_REALITY_TARGET_MODE}${W_REALITY_TARGET:+ ($W_REALITY_TARGET)}"
-    echo "Clash/Mihomo      : ON / Routing ON / Auto Detect ON / (?i)(clash|mihomo)"
-    if [[ -n "${W_XUI_USERNAME_INPUT:-}${W_XUI_PASSWORD_INPUT:-}" ]]; then
-      echo "3x-ui Credentials : 用户自定义"
-    else
-      echo "3x-ui Credentials : 保持现有 / 新部署自动生成"
-    fi
-  fi
-  if [[ "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
-    if [[ -n "${W_LUCKY_USERNAME_INPUT:-}${W_LUCKY_PASSWORD_INPUT:-}" ]]; then
-      echo "Lucky Credentials : 用户自定义"
-    else
-      echo "Lucky Credentials : 保持现有 / 新部署自动生成"
-    fi
-  fi
-  if [[ "$W_PROFILE" == "lucky-web" ]]; then
-    echo "Web Gateway       : Lucky direct :443"
-    echo "Lucky Domain      : lucky.${W_ROOT_DOMAIN}"
-    echo "Node / 3x-ui      : NOT INSTALLED"
-  fi
-  echo "Docker            : $W_ENABLE_DOCKER"
+  echo "可选组件"
+  echo "  Docker：$([[ "$W_ENABLE_DOCKER" == true ]] && echo "安装" || echo "不安装")"
   if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
-    echo "Cloudflare CDN WS : $W_ENABLE_CF_WS"
+    echo "  Cloudflare CDN WS：$([[ "$W_ENABLE_CF_WS" == true ]] && echo "启用" || echo "不启用")"
   fi
-  echo "------------------------------------------"
+  echo "=========================================="
   wizard_yesno "确认并开始部署？" y || return 10
 }
 
