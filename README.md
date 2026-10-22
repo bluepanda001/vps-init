@@ -119,7 +119,7 @@ vps-init tcpquality raw ...   # 高级：显式透传上游参数
 | `lucky-reality` | Nginx Stream SNI 分流 | 必须 | Lucky HTTPS 反代 | Nginx Stream → Reality :1443 / Lucky :8443；`lucky.<domain>/zhg` 管理、`xui.<domain>` 面板、`node.<domain>` 订阅 |
 | `nginx-reality` | Nginx Stream SNI 分流 | 必须 | Nginx HTTPS 反代 | Nginx 内部 TLS :8443（轻量/高级） |
 
-**自定义安装支持组件级选择**：先决定是否安装 3x-ui + Reality，再选择是否安装 Lucky、是否启用 Nginx HTTPS 入口、是否部署 Cloudflare CDN WS，以及是否安装 Docker。Lucky + Reality 会自动启用 Nginx Stream 来复用公网 443；如果只选 Reality + CDN WS，向导会自动切换到需要域名的 Nginx + Reality 拓扑。快速安装仍保留原有预设组合。
+**安装向导采用分层选择**：先选择快速安装或自定义安装，再从五种部署方案中选一项；Lucky、Nginx 和 443 复用等依赖自动配置，不再分别询问是否安装节点、再选择网关。自定义模式下，CDN WS、Docker 和高级参数按需询问；高级参数默认跳过，沿用当前 SSH 端口及默认节点/订阅路径。快速模式继续保留原有默认行为。
 
 3x-ui V1.2.3 固定使用 `v3.8.5`，安装器及随后下载的仓库脚本固定到该签名 tag 当前对应的 commit `7ef22f94c950ff09f0870e2295fa65ad5968742c`；release archive 除上游 sidecar 外还会再按项目内置 SHA256 校验。只使用 **3x-ui 自带 Xray**，不会安装第二套独立 Xray。部署时会将 Xray 模板中的 Freedom Protocol Strategy 设为 `UseIPv4v6`，并写入当前 Xray 支持的 `sockopt.domainStrategy`，避免只改面板显示值。
 
