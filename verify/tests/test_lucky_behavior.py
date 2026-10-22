@@ -66,7 +66,7 @@ def test_profile_switch_preserves_user_proxy():
     assert body["RuleName"]=="vps-init-https"
     remarks=[p.get("Remark") for p in body["ProxyList"]]
     assert "user-qinglong" in remarks
-    assert "lucky-admin" not in remarks
+    assert "lucky-admin" in remarks
     assert "3x-ui-panel" in remarks
     assert "subscription" in remarks
     admins=[p for p in body["ProxyList"] if p.get("Remark")=="lucky-admin"]
