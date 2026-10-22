@@ -1,5 +1,11 @@
 # Release Notes
 
+## v1.3.19
+
+- 修复 `lucky-reality` 默认未创建 `lucky.<根域名>` DNS 记录、未配置 Lucky 管理面板反代的问题。
+- Lucky 管理入口现在通过既有公网 TCP 443 / Nginx Stream / Lucky HTTPS 后端访问，默认地址为 `https://lucky.<根域名>/zhg`；DNS 记录保持 Cloudflare DNS only，不要求橙云 CDN。
+- `vps-init secrets`、`info`、`gateway` 显示 Lucky 公网管理地址；验收新增 Lucky 管理域名 HTTPS 端到端检查及回归测试。
+
 ## v1.3.18
 
 - 修复一键 DD 检测到现有 root ED25519 公钥时仍同时传入 `--password` 的错误。上游重装脚本禁止密码和 SSH 公钥同时指定；现在有公钥时仅传入公钥，无公钥时才提示设置临时密码。
