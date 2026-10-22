@@ -215,10 +215,9 @@ wizard_reinstall() {
     for key in "${existing_keys[@]}"; do
       cmd+=(--ssh-key "$key")
     done
-    # Password login is not needed when an SSH key is available. Still pass a
-    # strong random value so upstream never opens an interactive plaintext prompt.
-    dd_password="$(random_b64url 40 32)"
-    cmd+=(--password "$dd_password")
+    # Upstream rejects --password together with --ssh-key. With keys present,
+    # it skips the password prompt and configures key-based login only.
+    # Do not pass a password here; this also avoids enabling password auth.
   else
     echo
     echo "当前没有检测到 root 的 ED25519 authorized key。"

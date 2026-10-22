@@ -118,6 +118,19 @@ grep -q 'mapfile -t existing_keys' lib/wizard.sh
 grep -q 'cmd+=(--ssh-key "$key")' lib/wizard.sh
 grep -q '\$NF=="vps-main"' lib/wizard.sh
 
+# The pinned upstream reinstall script rejects --password combined with --ssh-key.
+# When root ED25519 keys exist, pass keys only; ask for a password only if none exist.
+python3 - <<'PY_DD_KEY_PASSWORD'
+from pathlib import Path
+s = Path("lib/wizard.sh").read_text()
+after_key_check = s.split('if (( ${#existing_keys[@]} > 0 )); then', 1)[1]
+key_branch, no_key_branch = after_key_check.split('\n  else\n', 1)
+no_key_branch = no_key_branch.split('\n  fi\n', 1)[0]
+assert 'cmd+=(--ssh-key "$key")' in key_branch
+assert 'cmd+=(--password' not in key_branch, "DD must not pass a password alongside SSH keys"
+assert 'cmd+=(--password "$dd_password")' in no_key_branch, "DD without SSH keys must pass the prompted password"
+PY_DD_KEY_PASSWORD
+
 # V1.2.3: short-lived IP certificates must have a verified renewal mechanism.
 grep -q 'apt_get_with_lock_retry install -y -qq cron' modules/subscription/apply.sh
 grep -q 'systemctl enable --now cron' modules/subscription/apply.sh
@@ -336,7 +349,7 @@ if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
 fi
 grep -q 'cert_has_ip_san "$cert" "$SERVER_IP"' modules/subscription/apply.sh
 grep -q 'cert_key_match "$cert" "$key"' modules/subscription/apply.sh
-[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.17" ]]
+[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.18" ]]
 grep -q 'permitrootlogin_matches_expected' core/ssh.sh
 grep -q 'systemctl reset-failed ssh.service ssh.socket' core/ssh.sh
 grep -q 'ssh_rollback_unit_name' core/ssh.sh
