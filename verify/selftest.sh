@@ -6,7 +6,7 @@ for f in vps-init $(find . -type f -name '*.sh' ! -path './verify/selftest.sh' |
   echo "SYNTAX_CHECK $f"
   bash -n "$f"
 done
-python3 -m py_compile modules/3x-ui/xui_api.py modules/cloudflare/cloudflare.py modules/lucky/lucky_api.py optional/docker/merge_daemon.py verify/tests/test_lucky_behavior.py verify/tests/test_docker_merge.py
+python3 -m py_compile modules/3x-ui/xui_api.py modules/cloudflare/cloudflare.py modules/lucky/lucky_api.py optional/docker/merge_daemon.py verify/tests/test_lucky_behavior.py verify/tests/test_docker_merge.py verify/tests/test_xui_settings.py
 find modules -type d -name '__pycache__' -prune -exec rm -rf {} +
 for p in base-only lucky-web reality-only nginx-reality lucky-reality; do
   cfg=$(mktemp)
@@ -48,6 +48,18 @@ validate_config
 [[ "$XUI_PANEL_URI_PATH" == /zhg/ ]]
 [[ "$XUI_SUB_URI_PATH" == "/zhg/" ]]
 rm -f "$cfg"
+'''
+
+# Component-based custom wizard must map independent selections to supported topologies.
+ROOT_DIR="$ROOT_DIR" bash -c '''set -Eeuo pipefail
+source "$ROOT_DIR/lib/wizard.sh"
+[[ "$(wizard_profile_from_components true none false)" == reality-only ]]
+[[ "$(wizard_profile_from_components true none true)" == nginx-reality ]]
+[[ "$(wizard_profile_from_components true lucky false)" == lucky-reality ]]
+[[ "$(wizard_profile_from_components true nginx true)" == nginx-reality ]]
+[[ "$(wizard_profile_from_components false none false)" == base-only ]]
+[[ "$(wizard_profile_from_components false lucky false)" == lucky-web ]]
+if wizard_profile_from_components false nginx false >/dev/null 2>&1; then exit 1; fi
 '''
 
 # Clash/Mihomo standard subscription path and explicit Clash path must not be
@@ -199,6 +211,9 @@ grep -q 'vps-init-extra-sni.map' modules/nginx/apply.sh
 grep -q 'Cloudflare CDN WS end-to-end proxy' verify/verify.sh
 grep -q 'Mihomo subscription advertises CDN WS endpoint' verify/verify.sh
 grep -q 'W_ENABLE_CF_WS' lib/wizard.sh
+grep -q 'wizard_profile_from_components' lib/wizard.sh
+grep -q 'set-freedom-strategy' modules/3x-ui/xui_api.py
+grep -q 'UseIPv4v6' modules/3x-ui/apply.sh
 
 # V1.2.7: REALITY fallback abuse protection, explicit Clash subscription,
 # user-supplied panel credentials, and structured secrets output.
@@ -317,6 +332,7 @@ grep -q 'Lucky SafeURL' verify/verify.sh
 grep -q 'https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}' vps-init
 python3 verify/tests/test_lucky_behavior.py
 python3 verify/tests/test_docker_merge.py
+python3 verify/tests/test_xui_settings.py
 bash verify/tests/test_shell_behaviors.sh
 bash verify/tests/test_firewall.sh
 python3 verify/tests/test_ssh_rollback.py
@@ -353,7 +369,7 @@ if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
 fi
 grep -q 'cert_has_ip_san "$cert" "$SERVER_IP"' modules/subscription/apply.sh
 grep -q 'cert_key_match "$cert" "$key"' modules/subscription/apply.sh
-[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.19" ]]
+[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.20" ]]
 grep -q 'permitrootlogin_matches_expected' core/ssh.sh
 grep -q 'systemctl reset-failed ssh.service ssh.socket' core/ssh.sh
 grep -q 'ssh_rollback_unit_name' core/ssh.sh
