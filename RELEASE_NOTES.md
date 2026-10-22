@@ -1,5 +1,11 @@
 # Release Notes
 
+## v1.3.21
+
+- 精简安装向导：快速/自定义模式共用简明部署方案菜单，取消重复的节点安装与 Web Gateway 选择。
+- 自定义模式仅在相关方案下询问 Cloudflare CDN WS，并单独提供 Docker 选项；高级 SSH、Reality Target、面板/订阅路径设置改为按需展开，默认沿用安全的现有 SSH 端口和常用路径。
+- 重整最终部署摘要，按方案、基础配置、节点/Web 服务和可选组件分组显示；增加五种部署方案映射回归测试。
+
 ## v1.3.20
 
 - 3x-ui 默认将 Freedom Protocol Strategy 设置为 `UseIPv4v6`，通过 Xray Settings API 保存并验收；同时设置面板兼容字段与当前 Xray 的 `streamSettings.sockopt.domainStrategy`。
