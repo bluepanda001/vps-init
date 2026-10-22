@@ -374,7 +374,7 @@ if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
 fi
 grep -q 'cert_has_ip_san "$cert" "$SERVER_IP"' modules/subscription/apply.sh
 grep -q 'cert_key_match "$cert" "$key"' modules/subscription/apply.sh
-[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.21" ]]
+[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.22" ]]
 grep -q 'permitrootlogin_matches_expected' core/ssh.sh
 grep -q 'systemctl reset-failed ssh.service ssh.socket' core/ssh.sh
 grep -q 'ssh_rollback_unit_name' core/ssh.sh
@@ -382,6 +382,13 @@ grep -q 'clear_ssh_rollback_marker' core/ssh.sh
 grep -q 'apt_get_with_lock_retry()' lib/common.sh
 grep -q '/var/cache/apt/archives/lock' lib/common.sh
 grep -q 'apt_get_with_lock_retry install -y docker-ce' optional/docker/apply.sh
+# Baseline tooling must cover on-server config editing, including Ubuntu Minimal.
+grep -q 'dnsutils nano vim-tiny git less' core/system.sh
+grep -q 'edit_config_file()' vps-init
+grep -q 'edit_config_file "$DEFAULT_CFG"' vps-init
+grep -q 'apt_get_with_lock_retry install -y nano' vps-init
+grep -q '应用当前配置 / 首次部署' vps-init
+grep -q '重新选择安装方案' vps-init
 python3 - <<'PY_APT_LOCK'
 from pathlib import Path
 import re

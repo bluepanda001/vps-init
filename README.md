@@ -119,6 +119,8 @@ vps-init tcpquality raw ...   # 高级：显式透传上游参数
 | `lucky-reality` | Nginx Stream SNI 分流 | 必须 | Lucky HTTPS 反代 | Nginx Stream → Reality :1443 / Lucky :8443；`lucky.<domain>/zhg` 管理、`xui.<domain>` 面板、`node.<domain>` 订阅 |
 | `nginx-reality` | Nginx Stream SNI 分流 | 必须 | Nginx HTTPS 反代 | Nginx 内部 TLS :8443（轻量/高级） |
 
+**Ubuntu 24.04 Minimal 初始化**默认补齐 `nano`、`vim-tiny`、`git`、`less` 等基础管理工具。主菜单的“手动编辑配置”会优先使用 `$EDITOR` 指定的有效编辑器，否则自动选择可用编辑器；极简系统尚未安装编辑器时会按需安装 `nano`。
+
 **安装向导采用分层选择**：先选择快速安装或自定义安装，再从五种部署方案中选一项；Lucky、Nginx 和 443 复用等依赖自动配置，不再分别询问是否安装节点、再选择网关。自定义模式下，CDN WS、Docker 和高级参数按需询问；高级参数默认跳过，沿用当前 SSH 端口及默认节点/订阅路径。快速模式继续保留原有默认行为。
 
 3x-ui V1.2.3 固定使用 `v3.8.5`，安装器及随后下载的仓库脚本固定到该签名 tag 当前对应的 commit `7ef22f94c950ff09f0870e2295fa65ad5968742c`；release archive 除上游 sidecar 外还会再按项目内置 SHA256 校验。只使用 **3x-ui 自带 Xray**，不会安装第二套独立 Xray。部署时会将 Xray 模板中的 Freedom Protocol Strategy 设为 `UseIPv4v6`，并写入当前 Xray 支持的 `sockopt.domainStrategy`，避免只改面板显示值。

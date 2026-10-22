@@ -433,6 +433,32 @@ update_self() {
   log_ok "更新完成。重新执行：vps-init"
 }
 
+edit_config_file() {
+  local config_file="$1" requested="${EDITOR:-}" candidate
+  local -a editor_cmd=()
+  if [[ -n "$requested" ]]; then
+    read -r -a editor_cmd <<<"$requested"
+    if (( ${#editor_cmd[@]} > 0 )) && command_exists "${editor_cmd[0]}"; then
+      "${editor_cmd[@]}" "$config_file"
+      return $?
+    fi
+    log_warn "指定的 EDITOR 不存在：$requested；尝试其他已安装编辑器。"
+  fi
+  for candidate in nano vi vim; do
+    if command_exists "$candidate"; then
+      "$candidate" "$config_file"
+      return $?
+    fi
+  done
+  log_warn "系统缺少文本编辑器，正在安装 nano..."
+  wait_apt_lock 300
+  export DEBIAN_FRONTEND=noninteractive
+  apt_get_with_lock_retry update
+  apt_get_with_lock_retry install -y nano
+  command_exists nano || die "nano 安装完成后仍不可用，请检查系统软件源。"
+  nano "$config_file"
+}
+
 menu() {
   require_root
   [[ -t 0 ]] || die "交互菜单需要 TTY。"
@@ -442,17 +468,17 @@ menu() {
     echo
     [[ -f "$DEFAULT_CFG" ]] && { state_load; echo "当前 Profile：${DEPLOYED_PROFILE:-未部署}"; echo; }
     cat <<'TXT'
-  1. 核心部署 / 继续部署
+  1. 应用当前配置 / 首次部署
   2. 运行核心验收
   3. 查看部署信息
   4. 查看当前状态
   5. 查看敏感凭据
   6. 修改管理账号 / 密码
   7. Web Gateway / Lucky
-  8. 编辑配置
+  8. 手动编辑配置（nano）
   9. 更新 VPS Init
  10. 查看服务日志
- 11. 重新运行核心安装向导
+ 11. 重新选择安装方案
  12. 系统重装 / 一键 DD
  13. 系统完整升级（apt upgrade）
  14. 网络调优 / TCP 测速
@@ -483,7 +509,7 @@ TXT
       7) show_gateway_summary "$DEFAULT_CFG" || true ;;
       8)
         [[ -f "$DEFAULT_CFG" ]] || { echo "尚无配置，先运行安装向导。"; "$ROOT_DIR/vps-init" wizard; continue; }
-        "${EDITOR:-vi}" "$DEFAULT_CFG"
+        edit_config_file "$DEFAULT_CFG"
         ;;
       9) update_self || true ;;
       10) show_logs || true ;;
