@@ -116,7 +116,7 @@ vps-init tcpquality raw ...   # 高级：显式透传上游参数
 | `base-only` | 不配置 | 不需要 | 无 | 无 |
 | `lucky-web` | Lucky 直接监听 HTTPS :443 | 必须 | 无 | Lucky 图形化 Web Gateway + Docker；不安装节点 |
 | `reality-only` | 3x-ui 自带 Xray Reality | 不需要 | IP HTTPS | 无 |
-| `lucky-reality` | Nginx Stream SNI 分流 | 必须 | Lucky HTTPS 反代 | Nginx Stream → Reality :1443 / Lucky :8443（推荐 Web Gateway） |
+| `lucky-reality` | Nginx Stream SNI 分流 | 必须 | Lucky HTTPS 反代 | Nginx Stream → Reality :1443 / Lucky :8443；`lucky.<domain>/zhg` 管理、`xui.<domain>` 面板、`node.<domain>` 订阅 |
 | `nginx-reality` | Nginx Stream SNI 分流 | 必须 | Nginx HTTPS 反代 | Nginx 内部 TLS :8443（轻量/高级） |
 
 3x-ui V1.2.3 固定使用 `v3.8.5`，安装器及随后下载的仓库脚本固定到该签名 tag 当前对应的 commit `7ef22f94c950ff09f0870e2295fa65ad5968742c`；release archive 除上游 sidecar 外还会再按项目内置 SHA256 校验。只使用 **3x-ui 自带 Xray**，不会安装第二套独立 Xray。
@@ -169,6 +169,7 @@ Internet :443
 Nginx Stream ssl_preread
  ├─ Reality SNI -> 127.0.0.1:1443
  └─ normal TLS  -> 127.0.0.1:8443
+                    ├─ lucky.<domain> -> Lucky 管理面板（/zhg）
                     ├─ xui.<domain>  -> 3x-ui
                     └─ node.<domain> -> Subscription
 ```
@@ -211,6 +212,9 @@ zhg
 http://127.0.0.1:16601/zhg
 
 Lucky Web Only 公网管理：
+https://lucky.<ROOT_DOMAIN>/zhg
+
+Lucky + Reality 公网管理（Nginx Stream :443 -> Lucky :8443）：
 https://lucky.<ROOT_DOMAIN>/zhg
 ```
 

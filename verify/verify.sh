@@ -64,6 +64,11 @@ verify_lucky_local_version() {
   lucky_local_version_ok 5
 }
 
+verify_lucky_public_domain() {
+  curl -fsS --max-time 10 --resolve "${LUCKY_DOMAIN}:443:127.0.0.1" \
+    -o /dev/null "https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}"
+}
+
 verify_mihomo_public_endpoint() {
   local body expected_server
   if [[ "$SUBSCRIPTION_EXPOSE_MODE_RESOLVED" == direct-ip-https ]]; then
@@ -292,6 +297,7 @@ verify_all() {
       check "Lucky active" systemctl is-active --quiet lucky
       check "Lucky SafeURL" verify_lucky_safe_url
       check "Lucky HTTPS backend 8443 listening" bash -c "ss -H -ltn 'sport = :8443' | grep . >/dev/null"
+      check "Lucky public admin domain HTTPS" verify_lucky_public_domain
     elif [[ "$PROFILE" == lucky-web ]]; then
       check "Wildcard certificate valid >7d" openssl x509 -checkend 604800 -noout -in "$DOMAIN_CERT_FILE"
       check "Lucky active" systemctl is-active --quiet lucky

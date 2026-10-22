@@ -262,13 +262,14 @@ def configure_web_only(base,token,lucky_domain,landing_port):
     )
     _replace_managed_rule(base,token,body,old_rows)
 
-def configure_rule(base,token,panel_domain,node_domain,panel_port,sub_port,landing_port):
+def configure_rule(base,token,panel_domain,node_domain,lucky_domain,panel_port,sub_port,landing_port):
     rows=request(base,'GET','/api/webservice/rules',token).get('ruleList') or []
     old_rows,body=_merged_rule(
       rows,'vps-init-https','127.0.0.1',8443,landing_port,
       [
         subrule(panel_domain,f'http://127.0.0.1:{panel_port}','3x-ui-panel'),
-        subrule(node_domain,f'http://127.0.0.1:{sub_port}','subscription')
+        subrule(node_domain,f'http://127.0.0.1:{sub_port}','subscription'),
+        subrule(lucky_domain,'http://127.0.0.1:16601','lucky-admin')
       ]
     )
     _replace_managed_rule(base,token,body,old_rows)
@@ -281,7 +282,7 @@ def main():
     sp=ap.add_subparsers(dest='cmd',required=True)
     p=sp.add_parser('set-admin'); p.add_argument('--new-user',required=True); p.add_argument('--new-password',required=True)
     p=sp.add_parser('sync-cert'); p.add_argument('--cert',required=True); p.add_argument('--key',required=True)
-    p=sp.add_parser('configure-web'); p.add_argument('--panel-domain',required=True); p.add_argument('--node-domain',required=True); p.add_argument('--panel-port',type=int,required=True); p.add_argument('--sub-port',type=int,required=True); p.add_argument('--landing-port',type=int,default=18080)
+    p=sp.add_parser('configure-web'); p.add_argument('--panel-domain',required=True); p.add_argument('--node-domain',required=True); p.add_argument('--lucky-domain',required=True); p.add_argument('--panel-port',type=int,required=True); p.add_argument('--sub-port',type=int,required=True); p.add_argument('--landing-port',type=int,default=18080)
     p=sp.add_parser('configure-web-only'); p.add_argument('--lucky-domain',required=True); p.add_argument('--landing-port',type=int,default=18080)
     sp.add_parser('status')
     a=ap.parse_args()
@@ -293,7 +294,7 @@ def main():
         cfg=request(a.base,'GET','/api/baseconfigure',tok)['baseconfigure']; cfg['AdminAccount']=a.new_user; cfg['AdminPassword']=a.new_password; cfg['AllowInternetaccess']=False
         request(a.base,'PUT','/api/baseconfigure',tok,body=cfg); print(json.dumps({'ok':True}))
       elif a.cmd=='sync-cert': sync_cert(a.base,tok,a.cert,a.key); print(json.dumps({'ok':True}))
-      elif a.cmd=='configure-web': configure_rule(a.base,tok,a.panel_domain,a.node_domain,a.panel_port,a.sub_port,a.landing_port); print(json.dumps({'ok':True}))
+      elif a.cmd=='configure-web': configure_rule(a.base,tok,a.panel_domain,a.node_domain,a.lucky_domain,a.panel_port,a.sub_port,a.landing_port); print(json.dumps({'ok':True}))
       elif a.cmd=='configure-web-only': configure_web_only(a.base,tok,a.lucky_domain,a.landing_port); print(json.dumps({'ok':True}))
       else: print(json.dumps(request(a.base,'GET','/api/status',tok),separators=(',',':')))
       return 0

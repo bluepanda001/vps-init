@@ -135,6 +135,9 @@ show_status_summary() {
   echo "Server            : ${SERVER_NAME:-}"
   echo "IPv4              : ${SERVER_IP:-未部署/未知}"
   echo "SSH Port          : $SSH_PORT"
+  if [[ "$PROFILE" == "lucky-reality" ]]; then
+    echo "Lucky Domain       : https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}"
+  fi
   if [[ "$PROFILE" == "lucky-web" ]]; then
     echo "Lucky Domain       : https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}"
     echo "Lucky Safe Entry   : ${LUCKY_SAFE_URL:-zhg}"
@@ -217,6 +220,7 @@ show_info_summary() {
         echo "  Reality Route     : 443 -> 127.0.0.1:1443"
         echo "  HTTPS Route       : 443 -> Lucky HTTPS 127.0.0.1:8443"
         echo "  Web Gateway       : Lucky (graphical UI, recommended)"
+        echo "  Lucky Public UI   : https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}"
         echo "  Lucky Safe Entry  : ${LUCKY_SAFE_URL:-zhg}"
         echo "  Lucky Local UI    : http://127.0.0.1:16601/${LUCKY_SAFE_URL:-zhg}"
         echo "  Lucky SSH Tunnel  : ssh -L 16601:127.0.0.1:16601 -p ${SSH_PORT} root@${SERVER_IP}"
@@ -361,8 +365,9 @@ show_gateway_summary() {
       echo "当前 Gateway： Lucky（推荐）"
       echo "服务状态：     $(systemctl is-active lucky 2>/dev/null || echo inactive)"
       echo "HTTPS 后端：   127.0.0.1:8443"
+      echo "公网管理地址： https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}"
       echo "安全入口：     ${LUCKY_SAFE_URL:-zhg}"
-      echo "管理面板：     http://127.0.0.1:16601/${LUCKY_SAFE_URL:-zhg}"
+      echo "本地管理地址： http://127.0.0.1:16601/${LUCKY_SAFE_URL:-zhg}"
       echo
       echo "SSH 隧道："
       echo "  ssh -L 16601:127.0.0.1:16601 -p ${SSH_PORT} root@${SERVER_IP}"

@@ -59,16 +59,20 @@ def test_profile_switch_preserves_user_proxy():
         raise AssertionError((method,path))
     old=m.request; m.request=fake
     try:
-        m.configure_rule("http://x","tok","xui.example.com","node.example.com",34556,2096,18080)
+        m.configure_rule("http://x","tok","xui.example.com","node.example.com","lucky.example.com",34556,2096,18080)
     finally:
         m.request=old
     body=posted[0]
     assert body["RuleName"]=="vps-init-https"
     remarks=[p.get("Remark") for p in body["ProxyList"]]
     assert "user-qinglong" in remarks
-    assert "lucky-admin" not in remarks
+    assert "lucky-admin" in remarks
     assert "3x-ui-panel" in remarks
     assert "subscription" in remarks
+    admins=[p for p in body["ProxyList"] if p.get("Remark")=="lucky-admin"]
+    assert len(admins)==1
+    assert admins[0]["Domains"]==["lucky.example.com"]
+    assert "http://127.0.0.1:16601" in admins[0]["Locations"]
 
 def test_failed_replacement_restores_original():
     existing=managed_web_rule()

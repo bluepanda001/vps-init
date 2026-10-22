@@ -95,6 +95,11 @@ EOF2
   else
     python3 "$ROOT_DIR/modules/cloudflare/cloudflare.py" upsert --zone "$ROOT_DOMAIN" --name "$PANEL_DOMAIN" --ip "$SERVER_IP" >/dev/null
     python3 "$ROOT_DIR/modules/cloudflare/cloudflare.py" upsert --zone "$ROOT_DOMAIN" --name "$NODE_DOMAIN" --ip "$SERVER_IP" >/dev/null
-    log_ok "Cloudflare DNS 已写入（DNS only）：$PANEL_DOMAIN / $NODE_DOMAIN -> $SERVER_IP"
+    if [[ "$PROFILE" == "lucky-reality" ]]; then
+      python3 "$ROOT_DIR/modules/cloudflare/cloudflare.py" upsert --zone "$ROOT_DOMAIN" --name "$LUCKY_DOMAIN" --ip "$SERVER_IP" >/dev/null
+      log_ok "Cloudflare DNS 已写入（DNS only）：$PANEL_DOMAIN / $NODE_DOMAIN / $LUCKY_DOMAIN -> $SERVER_IP"
+    else
+      log_ok "Cloudflare DNS 已写入（DNS only）：$PANEL_DOMAIN / $NODE_DOMAIN -> $SERVER_IP"
+    fi
   fi
 }

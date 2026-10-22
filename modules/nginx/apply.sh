@@ -94,7 +94,7 @@ EOF2
 server {
     listen 80;
     listen [::]:80;
-    server_name ${PANEL_DOMAIN} ${NODE_DOMAIN};
+    server_name ${PANEL_DOMAIN} ${NODE_DOMAIN} ${LUCKY_DOMAIN};
     return 308 https://\$host\$request_uri;
 }
 EOF2
