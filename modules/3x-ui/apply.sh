@@ -148,6 +148,19 @@ module_xui() {
   done
   curl -fsS --max-time 5 -H "Authorization: Bearer ${XUI_API_TOKEN}" "${api}panel/api/server/status" >/dev/null ||     die "3x-ui 本地 API 不可用。"
 
+  local freedom_out
+  freedom_out="$(python3 "$ROOT_DIR/modules/3x-ui/xui_api.py" --base "$api" --token "$XUI_API_TOKEN" set-freedom-strategy --strategy UseIPv4v6)"
+  if [[ "$(jq -r '.changed // false' <<<"$freedom_out")" == true ]]; then
+    log_info "已保存 Freedom 协议策略 UseIPv4v6，重启 3x-ui/Xray 使设置生效。"
+    systemctl restart x-ui
+    for _ in $(seq 1 20); do
+      curl -fsS --max-time 2 -H "Authorization: Bearer ${XUI_API_TOKEN}" "${api}panel/api/server/status" >/dev/null 2>&1 && break
+      sleep 1
+    done
+    curl -fsS --max-time 5 -H "Authorization: Bearer ${XUI_API_TOKEN}" "${api}panel/api/server/status" >/dev/null || die "设置 Freedom 策略后 3x-ui API 未恢复。"
+  fi
+  log_ok "3x-ui Freedom 协议策略：UseIPv4v6。"
+
   local xray=/usr/local/x-ui/bin/xray-linux-amd64
   [[ -x "$xray" ]] || xray="$(find /usr/local/x-ui/bin -maxdepth 1 -type f -name 'xray*' -perm -111 | head -1 || true)"
   [[ -n "$xray" && -x "$xray" ]] || die "未找到 3x-ui 自带 Xray。"

@@ -5,7 +5,7 @@ The helper only talks to the loopback-only panel with a Bearer API token.
 It never prints the token or Reality private key.
 """
 from __future__ import annotations
-import argparse, json, os, sys, urllib.error, urllib.request
+import argparse, json, os, sys, urllib.error, urllib.request, urllib.parse
 from typing import Any
 
 
@@ -64,6 +64,78 @@ def patch_settings(base: str, token: str, patch: dict[str, Any]) -> None:
     if not isinstance(cur,dict): raise RuntimeError("setting/all returned no object")
     cur.update(patch)
     req(base,token,"POST","panel/api/setting/update",cur)
+
+
+def req_form(base: str, token: str, path: str, fields: dict[str, str]) -> dict[str, Any]:
+    data=urllib.parse.urlencode(fields).encode()
+    headers={"Accept":"application/json","Authorization":f"Bearer {token}","User-Agent":"vps-init/1",
+             "Content-Type":"application/x-www-form-urlencoded; charset=UTF-8"}
+    r=urllib.request.Request(base.rstrip("/")+"/"+path.lstrip("/"),data=data,headers=headers,method="POST")
+    try:
+        with urllib.request.urlopen(r,timeout=30) as resp: raw=resp.read()
+    except urllib.error.HTTPError as e:
+        raw=e.read()
+        raise RuntimeError(f"HTTP {e.code}: {raw[:400]!r}") from None
+    try: out=json.loads(raw.decode())
+    except Exception: raise RuntimeError(f"non-JSON response: {raw[:400]!r}") from None
+    if not isinstance(out,dict): raise RuntimeError("unexpected form response")
+    if out.get("success") is False: raise RuntimeError(str(out.get("msg") or "3x-ui form API failed"))
+    return out
+
+
+def read_xray_template(base: str, token: str) -> tuple[dict[str, Any], str]:
+    raw=get_obj(base,token,"POST","panel/api/xray/")
+    if isinstance(raw,str):
+        try: payload=json.loads(raw)
+        except Exception: raise RuntimeError("Xray settings API returned invalid JSON") from None
+    else: payload=raw
+    if not isinstance(payload,dict): raise RuntimeError("Xray settings API returned no object")
+    test_url=str(payload.get("outboundTestUrl") or "https://www.google.com/generate_204")
+    template=payload.get("xraySetting",payload)
+    # Tolerate legacy response wrappers while keeping the saved template itself raw.
+    for _ in range(5):
+        if isinstance(template,str):
+            try: template=json.loads(template)
+            except Exception: raise RuntimeError("Xray template is invalid JSON") from None
+        if isinstance(template,dict) and isinstance(template.get("outbounds"),list):
+            return template,test_url
+        if isinstance(template,dict) and "xraySetting" in template:
+            template=template["xraySetting"]
+            continue
+        break
+    raise RuntimeError("Xray template has no outbounds array; refusing to overwrite it")
+
+
+def set_freedom_strategy(base: str, token: str, strategy: str = "UseIPv4v6") -> dict[str, Any]:
+    allowed={"AsIs","UseIP","UseIPv4","UseIPv6","UseIPv4v6","ForceIP","ForceIPv4","ForceIPv6","ForceIPv4v6"}
+    if strategy not in allowed: raise RuntimeError(f"unsupported Freedom strategy: {strategy}")
+    template,test_url=read_xray_template(base,token)
+    freedom=[x for x in template["outbounds"] if isinstance(x,dict) and str(x.get("protocol") or "").lower()=="freedom"]
+    if not freedom: raise RuntimeError("Xray template has no freedom outbound; refusing to guess")
+    outbound=next((x for x in freedom if str(x.get("tag") or "").lower() in {"direct","freedom"}),freedom[0])
+    settings=outbound.get("settings")
+    if not isinstance(settings,dict): settings={}; outbound["settings"]=settings
+    stream=outbound.get("streamSettings")
+    if not isinstance(stream,dict): stream={}; outbound["streamSettings"]=stream
+    sockopt=stream.get("sockopt")
+    if not isinstance(sockopt,dict): sockopt={}; stream["sockopt"]=sockopt
+    changed=(settings.get("domainStrategy")!=strategy or sockopt.get("domainStrategy")!=strategy)
+    settings["domainStrategy"]=strategy  # 3x-ui Freedom Strategy UI compatibility
+    sockopt["domainStrategy"]=strategy   # Current Xray-compatible location
+    if changed:
+        req_form(base,token,"panel/api/xray/update",{
+            "xraySetting":json.dumps(template,ensure_ascii=False,separators=(",",":")),
+            "outboundTestUrl":test_url,
+        })
+        verified,_=read_xray_template(base,token)
+        check=[x for x in verified["outbounds"] if isinstance(x,dict) and str(x.get("protocol") or "").lower()=="freedom"]
+        check_out=next((x for x in check if str(x.get("tag") or "").lower() in {"direct","freedom"}),check[0] if check else {})
+        check_settings=check_out.get("settings") if isinstance(check_out.get("settings"),dict) else {}
+        check_stream=check_out.get("streamSettings") if isinstance(check_out.get("streamSettings"),dict) else {}
+        check_sock=check_stream.get("sockopt") if isinstance(check_stream.get("sockopt"),dict) else {}
+        if strategy not in {check_settings.get("domainStrategy"),check_sock.get("domainStrategy"),check_settings.get("targetStrategy")}:
+            raise RuntimeError("Freedom strategy save verification failed")
+    return {"changed":changed,"strategy":strategy,"tag":str(outbound.get("tag") or "")}
 
 
 def list_inbounds(base: str, token: str) -> list[dict[str, Any]]:
@@ -318,6 +390,7 @@ def main() -> int:
     ap.add_argument("--base",required=True); ap.add_argument("--token",required=True)
     sp=ap.add_subparsers(dest="cmd",required=True)
     p=sp.add_parser("patch-settings"); p.add_argument("--json",required=True)
+    p=sp.add_parser("set-freedom-strategy"); p.add_argument("--strategy",choices=["AsIs","UseIP","UseIPv4","UseIPv6","UseIPv4v6","ForceIP","ForceIPv4","ForceIPv6","ForceIPv4v6"],default="UseIPv4v6")
     p=sp.add_parser("scan"); p.add_argument("--candidates",required=True)
     p=sp.add_parser("create-reality")
     p.add_argument("--remark",default="VPSINIT-Reality"); p.add_argument("--listen",required=True); p.add_argument("--port",type=int,required=True)
@@ -349,6 +422,7 @@ def main() -> int:
     args=ap.parse_args()
     try:
       if args.cmd=="patch-settings": patch_settings(args.base,args.token,json.loads(args.json)); out={"ok":True}
+      elif args.cmd=="set-freedom-strategy": out=set_freedom_strategy(args.base,args.token,args.strategy)
       elif args.cmd=="scan": out=get_obj(args.base,args.token,"POST","panel/api/server/scanRealityTargets",{"targets":args.candidates})
       elif args.cmd=="create-reality": out=create_reality(args)
       elif args.cmd=="create-ws": out=create_ws(args)
