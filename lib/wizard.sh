@@ -441,25 +441,24 @@ wizard_collect() {
         echo "提示：CDN WS 需要域名和 Nginx TLS/SNI 入口，已自动选择 Nginx + Reality 拓扑。"
       fi
     else
-      while true; do
-        profile_choice="$(wizard_select "请选择部署模式：" \
-          "Base Only - 仅系统初始化/安全/BBR/Swap，不安装节点或 Web Gateway" \
-          "Lucky Web Only - Base + Docker + Lucky + Cloudflare 域名/SSL，不安装任何节点（推荐 Web 服务器）" \
-          "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
-          "Lucky + Reality - 图形化 Web Gateway + Reality，共用公网 443，需要 Cloudflare 域名" \
-          "Nginx + Reality - 轻量/高级：纯 Nginx 配置 + Reality，需要 Cloudflare 域名" \
-          "返回安装方式")"
-        [[ "$profile_choice" == 6 ]] && continue
-        case "$profile_choice" in
-          1) W_PROFILE="base-only" ;;
-          2) W_PROFILE="lucky-web" ;;
-          3) W_PROFILE="reality-only" ;;
-          4) W_PROFILE="lucky-reality" ;;
-          5) W_PROFILE="nginx-reality" ;;
-        esac
-        break
-      done
+      profile_choice="$(wizard_select "请选择部署模式：" \
+        "Base Only - 仅系统初始化/安全/BBR/Swap，不安装节点或 Web Gateway" \
+        "Lucky Web Only - Base + Docker + Lucky + Cloudflare 域名/SSL，不安装任何节点（推荐 Web 服务器）" \
+        "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
+        "Lucky + Reality - 图形化 Web Gateway + Reality，共用公网 443，需要 Cloudflare 域名" \
+        "Nginx + Reality - 轻量/高级：纯 Nginx 配置 + Reality，需要 Cloudflare 域名" \
+        "返回安装方式")"
+      [[ "$profile_choice" == 6 ]] && continue
+      case "$profile_choice" in
+        1) W_PROFILE="base-only" ;;
+        2) W_PROFILE="lucky-web" ;;
+        3) W_PROFILE="reality-only" ;;
+        4) W_PROFILE="lucky-reality" ;;
+        5) W_PROFILE="nginx-reality" ;;
+      esac
     fi
+    break
+  done
   W_ALLOW_PROFILE_SWITCH="0"
   state_load
   if [[ -n "${DEPLOYED_PROFILE:-}" && "$DEPLOYED_PROFILE" != "$W_PROFILE" ]]; then
