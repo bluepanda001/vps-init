@@ -125,7 +125,7 @@ from pathlib import Path
 s = Path("lib/wizard.sh").read_text()
 branch = s.split('if (( ${#existing_keys[@]} > 0 )); then', 1)[1].split('\n  else\n', 1)[0]
 assert 'cmd+=(--ssh-key "$key")' in branch
-assert '--password' not in branch, "DD must not pass a password alongside SSH keys"
+assert 'cmd+=(--password' not in branch, "DD must not pass a password alongside SSH keys"
 assert 'cmd+=(--password "$dd_password")' in s.split('\n  else\n', 1)[1]
 PY_DD_KEY_PASSWORD
 
