@@ -403,7 +403,7 @@ wizard_collect() {
   while true; do
     mode_choice="$(wizard_select "安装方式：" \
       "快速安装（推荐：沿用当前 SSH 端口，只问必要项目）" \
-      "自定义安装（可改端口/路径/订阅端口/Docker 等）")"
+      "自定义安装（独立选择节点、Lucky、Nginx、CDN WS、Docker 等组件）")"
     custom="false"
     [[ "$mode_choice" == 2 ]] && custom="true"
 
