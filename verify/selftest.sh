@@ -276,8 +276,9 @@ PY_CFWS_ORDER
 
 # V1.3.x: Lucky is the graphical Web Gateway; 1.3.1 also supports
 # a node-free Lucky Web Only profile and separates DD from normal setup.
-grep -q 'Lucky + Reality - 图形化 Web Gateway' lib/wizard.sh
-grep -q 'Lucky Web Only - Base + Docker + Lucky' lib/wizard.sh
+grep -q 'Reality + Lucky（需要域名，自动配置 443 复用）' lib/wizard.sh
+grep -q '仅 Lucky Web 服务（需要域名，不部署代理节点）' lib/wizard.sh
+grep -q '需要修改高级参数' lib/wizard.sh
 grep -q '服务器公钥位置：/root/.ssh/authorized_keys' lib/wizard.sh
 grep -q 'LUCKY_PANEL_SSH_TUNNEL' modules/lucky/apply.sh
 grep -q 'configure-web-only' modules/lucky/lucky_api.py
