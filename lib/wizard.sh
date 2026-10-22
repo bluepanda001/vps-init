@@ -27,6 +27,26 @@ wizard_select() {
   done
 }
 
+wizard_profile_from_components() {
+  local node_enabled="$1" gateway="$2" ws_enabled="$3"
+  case "${node_enabled}:${gateway}" in
+    true:none)
+      if [[ "$ws_enabled" == true ]]; then printf "nginx-reality\n"; else printf "reality-only\n"; fi
+      ;;
+    true:lucky) printf "lucky-reality\n" ;;
+    true:nginx) printf "nginx-reality\n" ;;
+    false:none)
+      [[ "$ws_enabled" != true ]] || return 1
+      printf "base-only\n"
+      ;;
+    false:lucky)
+      [[ "$ws_enabled" != true ]] || return 1
+      printf "lucky-web\n"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 wizard_yesno() {
   local prompt="$1" default="${2:-y}" reply
   if [[ "$default" == y ]]; then
@@ -387,23 +407,59 @@ wizard_collect() {
     custom="false"
     [[ "$mode_choice" == 2 ]] && custom="true"
 
-    profile_choice="$(wizard_select "请选择部署模式：" \
-      "Base Only - 仅系统初始化/安全/BBR/Swap，不安装节点或 Web Gateway" \
-      "Lucky Web Only - Base + Docker + Lucky + Cloudflare 域名/SSL，不安装任何节点（推荐 Web 服务器）" \
-      "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
-      "Lucky + Reality - 图形化 Web Gateway + Reality，共用公网 443，需要 Cloudflare 域名" \
-      "Nginx + Reality - 轻量/高级：纯 Nginx 配置 + Reality，需要 Cloudflare 域名" \
-      "返回安装方式")"
-    [[ "$profile_choice" == 6 ]] && continue
-    case "$profile_choice" in
-      1) W_PROFILE="base-only" ;;
-      2) W_PROFILE="lucky-web" ;;
-      3) W_PROFILE="reality-only" ;;
-      4) W_PROFILE="lucky-reality" ;;
-      5) W_PROFILE="nginx-reality" ;;
-    esac
-    break
-  done
+    if [[ "$custom" == true ]]; then
+      local node_choice gateway_choice
+      if wizard_yesno "安装 3x-ui + VLESS Reality 节点？" y; then
+        W_INSTALL_NODE="true"
+        gateway_choice="$(wizard_select "Web Gateway 组件：" \
+          "不安装 Web Gateway（Reality 直接监听公网 443）" \
+          "安装 Lucky（需要域名；Reality 组合会自动用 Nginx Stream 复用 443）" \
+          "安装 Nginx HTTPS 入口（需要域名）")"
+        case "$gateway_choice" in
+          1) W_GATEWAY="none" ;;
+          2) W_GATEWAY="lucky" ;;
+          3) W_GATEWAY="nginx" ;;
+        esac
+        W_ENABLE_CF_WS="false"
+        if wizard_yesno "额外部署 Cloudflare CDN WS 备用节点（edge.<域名>）？" n; then
+          W_ENABLE_CF_WS="true"
+        fi
+      else
+        W_INSTALL_NODE="false"
+        gateway_choice="$(wizard_select "Web Gateway 组件：" \
+          "不安装 Web Gateway" \
+          "只安装 Lucky（Lucky 直接监听公网 443，需要域名）")"
+        case "$gateway_choice" in
+          1) W_GATEWAY="none" ;;
+          2) W_GATEWAY="lucky" ;;
+        esac
+        W_ENABLE_CF_WS="false"
+      fi
+      W_PROFILE="$(wizard_profile_from_components "$W_INSTALL_NODE" "$W_GATEWAY" "$W_ENABLE_CF_WS")" || die "所选组件组合无效。"
+      W_ENABLE_DOCKER="false"
+      if [[ "$W_INSTALL_NODE" == true && "$W_GATEWAY" == none && "$W_ENABLE_CF_WS" == true ]]; then
+        echo "提示：CDN WS 需要域名和 Nginx TLS/SNI 入口，已自动选择 Nginx + Reality 拓扑。"
+      fi
+    else
+      while true; do
+        profile_choice="$(wizard_select "请选择部署模式：" \
+          "Base Only - 仅系统初始化/安全/BBR/Swap，不安装节点或 Web Gateway" \
+          "Lucky Web Only - Base + Lucky + Cloudflare 域名/SSL，不安装任何节点（推荐 Web 服务器）" \
+          "Reality Only - 3x-ui + Reality + IP HTTPS 订阅，不需要域名" \
+          "Lucky + Reality - 图形化 Web Gateway + Reality，共用公网 443，需要 Cloudflare 域名" \
+          "Nginx + Reality - 轻量/高级：纯 Nginx 配置 + Reality，需要 Cloudflare 域名" \
+          "返回安装方式")"
+        [[ "$profile_choice" == 6 ]] && continue
+        case "$profile_choice" in
+          1) W_PROFILE="base-only" ;;
+          2) W_PROFILE="lucky-web" ;;
+          3) W_PROFILE="reality-only" ;;
+          4) W_PROFILE="lucky-reality" ;;
+          5) W_PROFILE="nginx-reality" ;;
+        esac
+        break
+      done
+    fi
   W_ALLOW_PROFILE_SWITCH="0"
   state_load
   if [[ -n "${DEPLOYED_PROFILE:-}" && "$DEPLOYED_PROFILE" != "$W_PROFILE" ]]; then
@@ -459,16 +515,16 @@ wizard_collect() {
   W_PANEL_PATH="/zhg/"
   W_SUB_PATH="/zhg/"
   W_SUBSCRIPTION_PORT="2096"
-  W_ENABLE_DOCKER="false"
-  [[ "$W_PROFILE" == "lucky-web" ]] && W_ENABLE_DOCKER="true"
-  W_ENABLE_CF_WS="false"
-  if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
-    W_ENABLE_CF_WS="true"
-    if [[ "$custom" == true ]]; then
-      if ! wizard_yesno "同时部署 Cloudflare CDN WS 备用节点（edge.<域名>）？" y; then
-        W_ENABLE_CF_WS="false"
-      fi
+  if [[ "$custom" != true ]]; then
+    W_ENABLE_DOCKER="false"
+    [[ "$W_PROFILE" == "lucky-web" ]] && W_ENABLE_DOCKER="true"
+    W_ENABLE_CF_WS="false"
+    if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
+      W_ENABLE_CF_WS="true"
     fi
+  else
+    # WS was selected independently above. Docker is asked separately below.
+    W_ENABLE_DOCKER="false"
   fi
   if [[ "$custom" == true && "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" ]]; then
     W_PANEL_PATH="$(normalize_path "$(wizard_prompt_default "3x-ui 面板 URI Path" "/zhg/")")"
@@ -478,13 +534,29 @@ wizard_collect() {
     W_SUBSCRIPTION_PORT="$(wizard_prompt_default "3x-ui Subscription 内部/直连端口" "2096")"
     [[ "$W_SUBSCRIPTION_PORT" =~ ^[0-9]+$ ]] && ((W_SUBSCRIPTION_PORT>=1 && W_SUBSCRIPTION_PORT<=65535)) || die "订阅端口无效。"
   fi
-  if [[ "$custom" == true && "$W_PROFILE" != "lucky-web" ]]; then
-    if wizard_yesno "同时安装 Docker Engine/Compose？" n; then W_ENABLE_DOCKER="true"; fi
+  if [[ "$custom" == true ]]; then
+    if wizard_yesno "同时安装 Docker Engine/Compose？" n; then W_ENABLE_DOCKER="true"; else W_ENABLE_DOCKER="false"; fi
   fi
 
   echo
   echo "---------------- 部署摘要 ----------------"
   echo "Profile           : $W_PROFILE"
+  if [[ "$custom" == true ]]; then
+    echo "Node / 3x-ui      : $W_INSTALL_NODE"
+    if [[ "$W_GATEWAY" == lucky ]]; then echo "Lucky             : enabled"; else echo "Lucky             : disabled"; fi
+    case "$W_PROFILE" in
+      lucky-reality) echo "Nginx             : auto (443 SNI multiplexing for Reality + Lucky)" ;;
+      nginx-reality)
+        if [[ "$W_GATEWAY" == none && "$W_ENABLE_CF_WS" == true ]]; then
+          echo "Nginx             : auto (required for CDN WS TLS/SNI ingress)"
+        else
+          echo "Nginx             : enabled (HTTPS gateway)"
+        fi
+        ;;
+      lucky-web) echo "Nginx             : not needed (Lucky direct :443)" ;;
+      *) echo "Nginx             : disabled" ;;
+    esac
+  fi
   echo "IPv4              : $W_SERVER_IP"
   echo "SSH Port          : $W_SSH_PORT"
   [[ -n "$W_ROOT_DOMAIN" ]] && echo "Root Domain       : $W_ROOT_DOMAIN"
