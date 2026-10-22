@@ -118,6 +118,17 @@ grep -q 'mapfile -t existing_keys' lib/wizard.sh
 grep -q 'cmd+=(--ssh-key "$key")' lib/wizard.sh
 grep -q '\$NF=="vps-main"' lib/wizard.sh
 
+# The pinned upstream reinstall script rejects --password combined with --ssh-key.
+# When root ED25519 keys exist, pass keys only; ask for a password only if none exist.
+python3 - <<'PY_DD_KEY_PASSWORD'
+from pathlib import Path
+s = Path("lib/wizard.sh").read_text()
+branch = s.split('if (( ${#existing_keys[@]} > 0 )); then', 1)[1].split('\n  else\n', 1)[0]
+assert 'cmd+=(--ssh-key "$key")' in branch
+assert '--password' not in branch, "DD must not pass a password alongside SSH keys"
+assert 'cmd+=(--password "$dd_password")' in s.split('\n  else\n', 1)[1]
+PY_DD_KEY_PASSWORD
+
 # V1.2.3: short-lived IP certificates must have a verified renewal mechanism.
 grep -q 'apt_get_with_lock_retry install -y -qq cron' modules/subscription/apply.sh
 grep -q 'systemctl enable --now cron' modules/subscription/apply.sh
