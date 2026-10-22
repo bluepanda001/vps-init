@@ -4,7 +4,7 @@ core_system() {
   wait_apt_lock 300
   export DEBIAN_FRONTEND=noninteractive
   apt_get_with_lock_retry update
-  apt_get_with_lock_retry install -y ca-certificates curl wget jq unzip tar openssl socat ufw fail2ban unattended-upgrades python3 python3-venv gnupg lsb-release rsync dnsutils
+  apt_get_with_lock_retry install -y ca-certificates curl wget jq unzip tar openssl socat ufw fail2ban unattended-upgrades python3 python3-venv gnupg lsb-release rsync dnsutils nano vim-tiny git less
   timedatectl set-timezone UTC
   systemctl enable --now systemd-timesyncd 2>/dev/null || true
   dpkg-reconfigure -f noninteractive unattended-upgrades >/dev/null 2>&1 || true
