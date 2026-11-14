@@ -178,7 +178,9 @@ wizard_existing_vps_main_key() {
 }
 
 wizard_reinstall() {
-  # Destructive reinstall is deliberately separate from the normal install wizard.
+  # Also used as an explicit option before the very first configuration.
+  # An optional preselected ED25519 public key can be carried through DD.
+  local incoming_key="${1:-}"
   local reinstall_repo="bin456789/reinstall"
   local reinstall_commit="2bcbc96100fe733bf9a16d609f799246f62666e5"
   local virt confirm_word script current_port key dd_password="" dd_password2=""
@@ -220,6 +222,19 @@ wizard_reinstall() {
 
   current_port="$(wizard_detect_ssh_port)"
   mapfile -t existing_keys < <(wizard_existing_ed25519_keys || true)
+  if [[ -n "$incoming_key" ]]; then
+    [[ "$incoming_key" == ssh-ed25519\ * ]] || die "DD 收到无效的 ED25519 公钥。"
+    local key_already_present=false
+    for key in "${existing_keys[@]}"; do
+      if [[ "$key" == "$incoming_key" ]]; then
+        key_already_present=true
+        break
+      fi
+    done
+    if [[ "$key_already_present" != true ]]; then
+      existing_keys=("$incoming_key" "${existing_keys[@]}")
+    fi
+  fi
 
   cmd=(bash "$script" ubuntu 24.04 --minimal --user root --ssh-port "$current_port")
   if (( ${#existing_keys[@]} > 0 )); then
@@ -260,7 +275,7 @@ wizard_reinstall() {
   echo "系统装好重新 SSH 登录后，直接运行："
   echo "  bash <(curl -fsSL https://raw.githubusercontent.com/bluepanda001/vps-init/main/install.sh)"
   echo
-  echo "新系统会直接进入安装方式 / Profile 选择，不会再次询问是否 DD。"
+  echo "新系统重新运行首次向导时，选择「直接开始配置」即可跳过 DD。"
   echo "============================================================"
   echo
 
@@ -274,6 +289,30 @@ wizard_reinstall() {
 
   echo "已暂缓 reboot。准备好后手动执行：reboot"
   return 0
+}
+
+wizard_offer_first_install_dd() {
+  local choice
+  wizard_banner
+  echo
+  choice="$(wizard_select "首次配置：是否需要先重装系统？" \
+    "直接开始配置（推荐）" \
+    "一键 DD 重装 Ubuntu 24.04 Minimal（清空系统盘）")"
+  [[ "$choice" == 2 ]] || return 0
+
+  # A fresh VPS might not yet have the unified key in authorized_keys. Allow
+  # the public key to be passed to the pinned DD script without touching the
+  # current SSH login configuration or copying any private keys to the VPS.
+  if [[ -z "$(wizard_existing_ed25519_keys || true)" ]]; then
+    echo
+    echo "未检测到 root 的 ED25519 公钥。建议先提供 vps-main 公钥，DD 后继续使用密钥登录。"
+    if wizard_yesno "现在粘贴 vps-main 公钥用于重装后的 SSH 登录？" y; then
+      wizard_collect_ssh_key
+    fi
+  fi
+  wizard_reinstall "${W_SSH_PUBLIC_KEY:-}"
+  # DD workflow (including cancellation) never continues into a normal apply.
+  return 42
 }
 
 wizard_shell_quote_value() {
@@ -390,8 +429,7 @@ wizard_collect() {
   wizard_banner
   echo
 
-  # Normal installation starts directly with install mode/profile. Destructive
-  # reinstall is intentionally a separate `vps-init reinstall` workflow.
+  # DD selection is handled once at the beginning of a fresh wizard run.
   local mode_choice profile_choice current_port custom advanced_prompt
   W_CUSTOM_ADVANCED="false"
   while true; do
@@ -561,6 +599,12 @@ wizard_run() {
   ensure_dir "$(dirname "$cfg")"
   state_load
   previous_profile="${DEPLOYED_PROFILE:-}"
+  if [[ ! -f "$cfg" && -z "$previous_profile" ]]; then
+    local first_run_rc=0
+    wizard_offer_first_install_dd || first_run_rc=$?
+    (( first_run_rc == 42 )) && return 42
+    (( first_run_rc == 0 )) || return "$first_run_rc"
+  fi
   if [[ -f "$cfg" && -n "$previous_profile" ]]; then
     backup="$(mktemp "$(dirname "$cfg")/.config.env.rollback.XXXXXX")"
     cp -a "$cfg" "$backup"

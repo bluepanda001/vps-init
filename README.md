@@ -34,7 +34,7 @@ vps-init
 
 ## 中文交互向导
 
-正常运行 `vps-init wizard` **不再询问是否 DD**，直接进入安装方式和 Profile 选择。系统重装改为独立入口：
+**首次安装且尚无已部署配置时**，向导最前面会询问是否进行一键 DD 重装 Ubuntu 24.04 Minimal。选择「直接开始配置」就跳过 DD，进入安装方式和 Profile 选择。已有配置重新运行向导不会重复询问 DD。随时仍可从独立入口重装：
 
 ```bash
 vps-init reinstall
@@ -42,7 +42,7 @@ vps-init reinstall
 
 主菜单也有“系统重装 / 一键 DD”。它使用固定提交的 `bin456789/reinstall`，真正清盘前必须输入大写 `DD`；DD 密码采用隐藏输入，并对上游输出再次统一脱敏，不在终端打印明文密码。若已有 ED25519 authorized key，会保留全部唯一公钥，并把 `vps-main` 优先传入。重启前仍可运行 `bash /root/reinstall.sh reset` 取消。
 
-DD 完成重新 SSH 登录后，再执行 VPS Init 一键命令，会直接进入安装方式 / Profile，不会再次询问 DD。
+DD 完成重新 SSH 登录后，再执行 VPS Init 一键命令；新系统会再次出现首次配置选项，选择「直接开始配置」即可继续安装，不会自动进行第二次 DD。若重装前还没有 ED25519 公钥，向导可先收集 vps-main 公钥并传给 DD 安装器，避免重装后无法用原有密钥登录。
 
 安装方式与 Profile：
 

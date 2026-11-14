@@ -533,7 +533,13 @@ cmd="${1:-menu}"
 cfg="${2:-$DEFAULT_CFG}"
 case "$cmd" in
   menu) menu; exit 0 ;;
-  wizard|install) require_root; wizard_run "$PERSIST_DIR/config.env"; exit $? ;;
+  wizard|install)
+    require_root
+    wizard_rc=0
+    wizard_run "$PERSIST_DIR/config.env" || wizard_rc=$?
+    (( wizard_rc == 42 )) && exit 0
+    exit "$wizard_rc"
+    ;;
   secrets)
     require_root
     [[ -f "$SECRETS_FILE" ]] || die "尚未生成 $SECRETS_FILE"

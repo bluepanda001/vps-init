@@ -275,7 +275,7 @@ assert s.index("module_nginx") < s.index("optional_cf_ws", s.index("if profile_h
 PY_CFWS_ORDER
 
 # V1.3.x: Lucky is the graphical Web Gateway; 1.3.1 also supports
-# a node-free Lucky Web Only profile and separates DD from normal setup.
+# a node-free Lucky Web Only profile and keeps DD optional on first setup.
 grep -q 'Reality + Lucky（需要域名，自动配置 443 复用）' lib/wizard.sh
 grep -q '仅 Lucky Web 服务（需要域名，不部署代理节点）' lib/wizard.sh
 grep -q '需要修改高级参数' lib/wizard.sh
@@ -293,9 +293,21 @@ grep -q 'Lucky owns public 443' verify/verify.sh
 grep -q 'lucky-web' verify/tests/test_firewall.sh
 grep -q 'profile_has_lucky' lib/common.sh
 grep -q 'Password|密码' lib/wizard.sh
-if grep -q 'wizard_offer_reinstall' lib/wizard.sh; then
-  echo 'FAIL: normal wizard must not ask for DD/reinstall' >&2; exit 1
-fi
+grep -q 'wizard_offer_first_install_dd' lib/wizard.sh
+grep -Fq 'if [[ ! -f "$cfg" && -z "$previous_profile" ]]; then' lib/wizard.sh
+# The initial menu must skip DD on option 1, and use the same pinned DD path on 2.
+ROOT_DIR="$ROOT_DIR" bash -c '
+  set -Eeuo pipefail
+  source "$ROOT_DIR/lib/wizard.sh"
+  wizard_banner() { :; }
+  wizard_existing_ed25519_keys() { echo "ssh-ed25519 TESTKEY vps-main"; }
+  wizard_reinstall() { echo DD_SELECTED; }
+  result="$(printf "1\\n" | wizard_offer_first_install_dd)"
+  [[ "$result" != *DD_SELECTED* ]]
+  rc=0
+  result="$(printf "2\\n" | wizard_offer_first_install_dd)" || rc=$?
+  [[ "$rc" == 42 && "$result" == *DD_SELECTED* ]]
+'
 if [[ -d proxy || -d apps ]]; then
   echo 'FAIL: project must not ship a duplicate proxy center or app installers' >&2; exit 1
 fi
