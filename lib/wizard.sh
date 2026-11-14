@@ -48,7 +48,10 @@ wizard_select_docker_install_source() {
   choice="$(wizard_select "Docker Engine / Compose 安装软件源：" \
     "Docker 官方源（download.docker.com）" \
     "国内镜像源（阿里云 mirrors.aliyun.com）")"
-  [[ "$choice" == 2 ]] && W_DOCKER_INSTALL_SOURCE="aliyun"
+  if [[ "$choice" == 2 ]]; then
+    W_DOCKER_INSTALL_SOURCE="aliyun"
+  fi
+  return 0
 }
 
 wizard_yesno() {
