@@ -302,10 +302,10 @@ ROOT_DIR="$ROOT_DIR" bash -c '
   wizard_banner() { :; }
   wizard_existing_ed25519_keys() { echo "ssh-ed25519 TESTKEY vps-main"; }
   wizard_reinstall() { echo DD_SELECTED; }
-  result="$(printf "1\\n" | wizard_offer_first_install_dd)"
+  result="$(printf "1\n" | wizard_offer_first_install_dd)"
   [[ "$result" != *DD_SELECTED* ]]
   rc=0
-  result="$(printf "2\\n" | wizard_offer_first_install_dd)" || rc=$?
+  result="$(printf "2\n" | wizard_offer_first_install_dd)" || rc=$?
   [[ "$rc" == 42 && "$result" == *DD_SELECTED* ]]
 '
 if [[ -d proxy || -d apps ]]; then
