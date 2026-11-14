@@ -39,6 +39,7 @@ W_SUBSCRIPTION_PORT=2096
 W_PANEL_PATH=/zhg/
 W_SUB_PATH="/zhg/"
 W_ENABLE_DOCKER=false
+W_DOCKER_INSTALL_SOURCE=official
 W_ENABLE_CF_WS=false
 cfg=$(mktemp)
 wizard_write_config "$cfg"
@@ -47,6 +48,7 @@ validate_config
 [[ "$PROFILE" == reality-only ]]
 [[ "$XUI_PANEL_URI_PATH" == /zhg/ ]]
 [[ "$XUI_SUB_URI_PATH" == "/zhg/" ]]
+[[ "$DOCKER_INSTALL_SOURCE" == "official" ]]
 rm -f "$cfg"
 '''
 
@@ -65,6 +67,55 @@ wizard_set_profile_choice 5
 [[ "$W_PROFILE" == base-only && "$W_INSTALL_NODE" == false && "$W_GATEWAY" == none ]]
 if wizard_set_profile_choice 6 >/dev/null 2>&1; then exit 1; fi
 '''
+
+# Docker apt source selection must be persisted, validated, and must not change
+# daemon.json / Docker Hub registry mirrors.
+ROOT_DIR="$ROOT_DIR" bash -c '''
+set -Eeuo pipefail
+source "$ROOT_DIR/lib/common.sh"
+source "$ROOT_DIR/lib/validate.sh"
+source "$ROOT_DIR/lib/wizard.sh"
+source "$ROOT_DIR/optional/docker/apply.sh"
+set_config_defaults
+[[ "$DOCKER_INSTALL_SOURCE" == official ]]
+[[ "$(docker_install_repo_url)" == "https://download.docker.com/linux/ubuntu" ]]
+DOCKER_INSTALL_SOURCE=aliyun
+[[ "$(docker_install_repo_url)" == "https://mirrors.aliyun.com/docker-ce/linux/ubuntu" ]]
+DOCKER_INSTALL_SOURCE=invalid
+if (docker_install_repo_url >/dev/null 2>&1); then exit 1; fi
+DOCKER_INSTALL_SOURCE=official
+W_ENABLE_DOCKER=false
+wizard_select_docker_install_source
+[[ "$W_DOCKER_INSTALL_SOURCE" == official ]]
+W_ENABLE_DOCKER=true
+wizard_select_docker_install_source <<< 2
+[[ "$W_DOCKER_INSTALL_SOURCE" == aliyun ]]
+wizard_select_docker_install_source <<< 1
+[[ "$W_DOCKER_INSTALL_SOURCE" == official ]]
+W_DOCKER_INSTALL_SOURCE=aliyun
+W_PROFILE=base-only
+W_PROVIDER=local
+W_SERVER_NAME=test-docker-source
+W_SSH_PORT=22
+W_SSH_PUBLIC_KEY=
+W_SSH_IDENTITY_HINT=
+W_ROOT_DOMAIN=
+W_LE_EMAIL=
+W_REALITY_TARGET_MODE=auto
+W_REALITY_TARGET=
+W_SUBSCRIPTION_PORT=2096
+W_PANEL_PATH=/zhg/
+W_SUB_PATH=/zhg/
+W_ENABLE_CF_WS=false
+tmp=$(mktemp)
+wizard_write_config "$tmp"
+load_config "$tmp"
+validate_config
+[[ "$DOCKER_INSTALL_SOURCE" == aliyun ]]
+rm -f "$tmp"
+'''
+grep -q 'repo_url/gpg' optional/docker/apply.sh
+grep -q '${repo_url} ${os_codename} stable' optional/docker/apply.sh
 
 # Clash/Mihomo standard subscription path and explicit Clash path must not be
 # identical; current 3x-ui registers separate Gin routes for them.
@@ -386,7 +437,7 @@ if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
 fi
 grep -q 'cert_has_ip_san "$cert" "$SERVER_IP"' modules/subscription/apply.sh
 grep -q 'cert_key_match "$cert" "$key"' modules/subscription/apply.sh
-[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.23" ]]
+[[ "$(tr -d "[:space:]" < VERSION)" == "1.3.24" ]]
 grep -q 'permitrootlogin_matches_expected' core/ssh.sh
 grep -q 'systemctl reset-failed ssh.service ssh.socket' core/ssh.sh
 grep -q 'ssh_rollback_unit_name' core/ssh.sh

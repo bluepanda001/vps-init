@@ -45,6 +45,7 @@ validate_config() {
   fi
 
   case "$ENABLE_DOCKER" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) die "ENABLE_DOCKER 只能是 true/false。" ;; esac
+  case "$DOCKER_INSTALL_SOURCE" in official|aliyun) ;; *) die "DOCKER_INSTALL_SOURCE 只能是 official/aliyun。" ;; esac
   case "$ENABLE_CF_WS" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) die "ENABLE_CF_WS 只能是 true/false。" ;; esac
   if is_true "$ENABLE_CF_WS"; then
     profile_has_xui && profile_has_domain || die "ENABLE_CF_WS=true 只适用于带 3x-ui 的域名 Reality Profile。"

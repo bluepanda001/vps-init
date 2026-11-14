@@ -38,6 +38,17 @@ wizard_set_profile_choice() {
   esac
   W_ENABLE_CF_WS="false"
   W_ENABLE_DOCKER="false"
+  W_DOCKER_INSTALL_SOURCE="official"
+}
+
+wizard_select_docker_install_source() {
+  W_DOCKER_INSTALL_SOURCE="official"
+  [[ "$W_ENABLE_DOCKER" == "true" ]] || return 0
+  local choice
+  choice="$(wizard_select "Docker Engine / Compose 安装软件源：" \
+    "Docker 官方源（download.docker.com）" \
+    "国内镜像源（阿里云 mirrors.aliyun.com）")"
+  [[ "$choice" == 2 ]] && W_DOCKER_INSTALL_SOURCE="aliyun"
 }
 
 wizard_yesno() {
@@ -346,6 +357,7 @@ SUBSCRIPTION_PORT=$(wizard_shell_quote_value "$W_SUBSCRIPTION_PORT")
 XUI_PANEL_URI_PATH=$(wizard_shell_quote_value "$W_PANEL_PATH")
 XUI_SUB_URI_PATH=$(wizard_shell_quote_value "$W_SUB_PATH")
 ENABLE_DOCKER=$(wizard_shell_quote_value "$W_ENABLE_DOCKER")
+DOCKER_INSTALL_SOURCE=$(wizard_shell_quote_value "$W_DOCKER_INSTALL_SOURCE")
 ENABLE_CF_WS=$(wizard_shell_quote_value "$W_ENABLE_CF_WS")
 ENABLE_CF_PREFERRED="false"
 ENABLE_CLOUDFLARESUB="false"
@@ -476,6 +488,7 @@ wizard_collect() {
     fi
     break
   done
+  wizard_select_docker_install_source
   W_ALLOW_PROFILE_SWITCH="0"
   state_load
   if [[ -n "${DEPLOYED_PROFILE:-}" && "$DEPLOYED_PROFILE" != "$W_PROFILE" ]]; then
@@ -587,6 +600,9 @@ wizard_collect() {
   echo
   echo "可选组件"
   echo "  Docker：$([[ "$W_ENABLE_DOCKER" == true ]] && echo "安装" || echo "不安装")"
+  if [[ "$W_ENABLE_DOCKER" == true ]]; then
+    echo "  Docker 安装源：$([[ "$W_DOCKER_INSTALL_SOURCE" == aliyun ]] && echo "阿里云（国内镜像）" || echo "Docker 官方源")"
+  fi
   if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" ]]; then
     echo "  Cloudflare CDN WS：$([[ "$W_ENABLE_CF_WS" == true ]] && echo "启用" || echo "不启用")"
   fi

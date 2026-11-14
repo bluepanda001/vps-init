@@ -61,6 +61,16 @@ DD 完成重新 SSH 登录后，再执行 VPS Init 一键命令；新系统会�
 
 快速安装只询问真正必要的信息；自定义安装才展开 URI Path、订阅端口、Reality Target、Docker 等参数。`Base Only` 仍然是纯基础初始化；如果完全不需要代理节点、只是想把 VPS 当 Docker/Web 服务器，则选 `Lucky Web Only`，Docker 默认开启，Lucky 用户名/密码可在部署阶段自定义。带 3x-ui 的 Profile 仍可自定义 3x-ui 管理凭据。所有密码输入均不回显。
 
+**Docker 安装软件源选择（v1.3.24）**：当向导确认要安装 Docker Engine / Compose 时，会另外询问安装软件包来源：
+
+```text
+Docker Engine / Compose 安装软件源：
+  1. Docker 官方源（download.docker.com）
+  2. 国内镜像源（阿里云 mirrors.aliyun.com）
+```
+
+选择保存到配置中的 `DOCKER_INSTALL_SOURCE=official|aliyun`，重跑 `vps-init apply` 会沿用选择；旧配置缺少此字段时默认 `official`。阿里云仅镜像 Docker CE 的 Ubuntu apt 软件包和签名密钥，不会修改 Docker Hub 镜像拉取地址，也不会覆盖已有 `/etc/docker/daemon.json` 中的 `registry-mirrors`。从阿里云安装的仍是 Docker CE、Buildx 与 Compose，建议中国大陆网络选择选项 2。
+
 ### 重跑与已有配置保护
 
 V1.3.6 起，普通 `vps-init apply` 以“尽量不破坏用户已有配置”为原则：

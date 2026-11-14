@@ -184,6 +184,7 @@ show_info_summary() {
   fi
   if is_true "${ENABLE_DOCKER:-false}"; then
     printf '  %-18s %s\n' "Docker" "$(systemctl is-active docker 2>/dev/null || echo inactive)"
+    printf '  %-18s %s\n' "Docker 安装源" "${DOCKER_INSTALL_SOURCE:-official}"
   else
     printf '  %-18s %s\n' "Docker" "未启用"
   fi

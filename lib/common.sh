@@ -369,6 +369,7 @@ set_config_defaults() {
   XUI_PANEL_URI_PATH="/zhg/"
   XUI_SUB_URI_PATH="/zhg/"
   ENABLE_DOCKER="false"
+  DOCKER_INSTALL_SOURCE="official"
   ENABLE_CF_WS="false"
   ENABLE_CF_PREFERRED="false"
   ENABLE_CLOUDFLARESUB="false"

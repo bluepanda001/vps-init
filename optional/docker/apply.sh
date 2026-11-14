@@ -48,12 +48,33 @@ docker_merge_daemon_config() {
   log_ok "Docker daemon.json 已安全合并；现有 data-root/镜像源/网络/runtime 等字段均保留。"
 }
 
+docker_install_repo_url() {
+  # Only the Docker CE apt package source is selected here. This does NOT
+  # rewrite Docker Hub registries or existing daemon.json registry-mirrors.
+  case "${DOCKER_INSTALL_SOURCE:-official}" in
+    official) printf '%s\n' 'https://download.docker.com/linux/ubuntu' ;;
+    aliyun)  printf '%s\n' 'https://mirrors.aliyun.com/docker-ce/linux/ubuntu' ;;
+    *) die "无效的 Docker 安装源：${DOCKER_INSTALL_SOURCE}" ;;
+  esac
+}
+
 optional_docker() {
   is_true "$ENABLE_DOCKER" || return 0
-  log_info "确保 Docker 官方 Engine / Compose 可用..."
+  local repo_url tmp_key
+  repo_url="$(docker_install_repo_url)"
+  log_info "确保 Docker Engine / Compose 可用；软件包源：${DOCKER_INSTALL_SOURCE:-official} (${repo_url})..."
   install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-  chmod a+r /etc/apt/keyrings/docker.asc
+  tmp_key="$(mktemp)"
+  if ! curl -fL --retry 3 --connect-timeout 10 --max-time 90 -o "$tmp_key" "$repo_url/gpg"; then
+    rm -f "$tmp_key"
+    die "Docker 软件包源 GPG 公钥下载失败：$repo_url/gpg"
+  fi
+  if ! gpg --batch --show-keys "$tmp_key" >/dev/null 2>&1; then
+    rm -f "$tmp_key"
+    die "Docker 安装源返回的 GPG 公钥无效；不会替换已有密钥。"
+  fi
+  install -m 0644 "$tmp_key" /etc/apt/keyrings/docker.asc
+  rm -f "$tmp_key"
 
   local os_codename
   os_codename="$(
@@ -64,7 +85,7 @@ optional_docker() {
   )"
   [[ -n "$os_codename" ]] || die "无法从 /etc/os-release 获取 VERSION_CODENAME。"
 
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${os_codename} stable" > /etc/apt/sources.list.d/docker.list
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] ${repo_url} ${os_codename} stable" > /etc/apt/sources.list.d/docker.list
   apt_get_with_lock_retry update
   apt_get_with_lock_retry install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
