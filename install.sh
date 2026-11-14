@@ -118,7 +118,7 @@ download_release() {
   (cd "$tmp" && printf '%s  %s\n' "$expected" "$archive" | sha256sum -c -) || return 1
 
   mkdir -p "$tmp/release"
-  tar -xzf "$tmp/$archive" -C "$tmp/release"
+  tar -xzf "$tmp/$archive" -C "$tmp/release" || return 1
   if [[ -x "$tmp/release/vps-init/vps-init" ]]; then
     src="$tmp/release/vps-init"
   elif [[ -x "$tmp/release/vps-init" ]]; then
@@ -139,7 +139,7 @@ download_source_ref() {
     if curl -fL --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 180       -o "$tmp/source.tar.gz" "$url" 2>/dev/null; then
       rm -rf "$tmp/source"
       mkdir -p "$tmp/source"
-      tar -xzf "$tmp/source.tar.gz" -C "$tmp/source"
+      tar -xzf "$tmp/source.tar.gz" -C "$tmp/source" || return 1
       root="$(find "$tmp/source" -mindepth 1 -maxdepth 1 -type d | head -1 || true)"
       if [[ -n "$root" && -x "$root/vps-init" ]]; then
         src="$root"
@@ -170,6 +170,8 @@ case "$RELEASE_LOOKUP_STATUS" in
 esac
 
 [[ -x "$src/vps-init" ]] || die "下载内容不完整：缺少 vps-init。"
+[[ -f "$src/lib/common.sh" && -f "$src/VERSION" ]] || die "下载内容不完整：缺少核心文件。"
+bash -n "$src/vps-init" || die "下载入口语法校验失败。"
 log "下载完成：VPS Init ${version:-unknown}"
 
 stage="${INSTALL_DIR}.new.$$"
@@ -185,6 +187,9 @@ find "$stage" -type f -name '*.sh' -exec chmod 755 {} + 2>/dev/null || true
 if [[ -f "$INSTALL_DIR/config.env" ]]; then
   install -m 600 "$INSTALL_DIR/config.env" "$stage/config.env"
 fi
+if [[ -f "$INSTALL_DIR/pending.env" ]]; then
+  install -m 600 "$INSTALL_DIR/pending.env" "$stage/pending.env"
+fi
 
 cat > "$stage/.source.env" <<EOF2
 VPSINIT_REPO=$(printf '%q' "$REPO")
@@ -192,12 +197,27 @@ VPSINIT_BOOTSTRAP_REF=$(printf '%q' "$BOOTSTRAP_REF")
 EOF2
 chmod 600 "$stage/.source.env"
 
+# Loading help resolves every sourced dependency without running system actions.
+bash "$stage/vps-init" --help >/dev/null || die "新版本依赖/入口检查失败；旧安装未修改。"
+bootstrap_cleanup() {
+  if [[ ! -d "$INSTALL_DIR" && -d "${INSTALL_DIR}.previous.$$" ]]; then
+    mv "${INSTALL_DIR}.previous.$$" "$INSTALL_DIR"
+  fi
+  rm -rf "$tmp"
+}
+trap bootstrap_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 if [[ -d "$INSTALL_DIR" ]]; then
   mkdir -p "$backup_dir"
-  cp -a "$INSTALL_DIR" "$backup_dir/vps-init" 2>/dev/null || true
-  rm -rf "$INSTALL_DIR"
+  cp -a "$INSTALL_DIR" "$backup_dir/vps-init" || die "备份旧版本失败；保留当前安装。"
+  mv "$INSTALL_DIR" "${INSTALL_DIR}.previous.$$"
 fi
-mv "$stage" "$INSTALL_DIR"
+if ! mv "$stage" "$INSTALL_DIR"; then
+  [[ ! -d "${INSTALL_DIR}.previous.$$" ]] || mv "${INSTALL_DIR}.previous.$$" "$INSTALL_DIR"
+  die "新版本切换失败；已尝试恢复旧安装。"
+fi
 ln -sfn "$INSTALL_DIR/vps-init" "$BIN_LINK"
 
 log "已安装到 $INSTALL_DIR"

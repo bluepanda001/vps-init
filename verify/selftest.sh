@@ -153,7 +153,7 @@ fi
 if grep -q 'state_set DEPLOYED_PROFILE' core/preflight.sh; then
   echo 'FAIL: preflight must not claim a deployed profile' >&2; exit 1
 fi
-grep -q 'state_set DEPLOYED_PROFILE' vps-init
+grep -q 'state_set DEPLOYED_PROFILE' lib/app/*.sh vps-init
 if grep -q '"uuid":uuid,"publicKey":pub,"privateKey":priv' modules/3x-ui/xui_api.py; then
   echo 'FAIL: Reality private key is exposed in helper output' >&2; exit 1
 fi
@@ -281,13 +281,13 @@ grep -q 'SUBSCRIPTION_MIHOMO_URL' modules/subscription/apply.sh
 grep -q 'VPSINIT_XUI_USERNAME_INPUT' modules/3x-ui/apply.sh
 grep -q 'VPSINIT_LUCKY_USERNAME_INPUT' modules/lucky/apply.sh
 grep -q 'wizard_collect_admin_credentials' lib/wizard.sh
-grep -q 'vps-init secrets --raw' vps-init
-grep -q '【一、3x-ui 面板】' vps-init
+grep -q 'vps-init secrets --raw' lib/app/*.sh vps-init
+grep -q '【一、3x-ui 面板】' lib/app/*.sh vps-init
 
 # V1.2.8: credentials changed through vps-init must update the live service,
 # root-only state, and root-only secrets together.
-grep -q 'source "$ROOT_DIR/lib/credentials.sh"' vps-init
-grep -q 'vps-init passwd' vps-init
+grep -q 'source "$ROOT_DIR/lib/credentials.sh"' lib/app/*.sh vps-init
+grep -q 'vps-init passwd' lib/app/*.sh vps-init
 grep -q 'credential_change_xui' lib/credentials.sh
 grep -q 'credential_change_lucky' lib/credentials.sh
 grep -q 'state_set XUI_PASSWORD' lib/credentials.sh
@@ -302,7 +302,7 @@ fi
 python3 - <<'PY_REALITY_SAFE'
 from pathlib import Path
 import importlib.util
-s=Path("lib/common.sh").read_text()
+s=Path("lib/config.sh").read_text()
 assert "www.cloudflare.com" not in s.split('REALITY_CANDIDATES="',1)[1].split('"',1)[0]
 spec=importlib.util.spec_from_file_location("xui_api","modules/3x-ui/xui_api.py")
 m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -321,7 +321,7 @@ PY_REALITY_SAFE
 
 python3 - <<'PY_CFWS_ORDER'
 from pathlib import Path
-s=Path("vps-init").read_text()
+s=(Path("vps-init").read_text()+Path("lib/app/menu.sh").read_text()+Path("lib/app/deploy.sh").read_text())
 assert s.index("module_nginx") < s.index("optional_cf_ws", s.index("if profile_has_xui"))
 PY_CFWS_ORDER
 
@@ -337,9 +337,9 @@ grep -q -- '--lucky-domain "$LUCKY_DOMAIN"' modules/lucky/apply.sh
 grep -q "subrule(lucky_domain,'http://127.0.0.1:16601','lucky-admin')" modules/lucky/lucky_api.py
 grep -q 'name "$LUCKY_DOMAIN" --ip "$SERVER_IP"' modules/cloudflare/apply.sh
 grep -q 'Lucky public admin domain HTTPS' verify/verify.sh
-grep -q 'vps-init gateway' vps-init
-grep -q 'vps-init reinstall' vps-init
-grep -q '当前 Gateway： Lucky Web Only（无节点）' vps-init
+grep -q 'vps-init gateway' lib/app/*.sh vps-init
+grep -q 'vps-init reinstall' lib/app/*.sh vps-init
+grep -q '当前 Gateway： Lucky Web Only（无节点）' lib/app/*.sh vps-init
 grep -q 'Lucky owns public 443' verify/verify.sh
 grep -q 'lucky-web' verify/tests/test_firewall.sh
 grep -q 'profile_has_lucky' lib/common.sh
@@ -395,23 +395,25 @@ grep -q 'for _ in $(seq 1 10)' modules/lucky/apply.sh
 grep -q 'LUCKY_SAFE_URL="${LUCKY_SAFE_URL:-zhg}"' modules/lucky/apply.sh
 grep -q -- '-setconf -key SetSafeURL -value "$LUCKY_SAFE_URL"' modules/lucky/apply.sh
 grep -q 'secret_set LUCKY_SAFE_URL' modules/lucky/apply.sh
-grep -q 'secret_line "安全入口" LUCKY_SAFE_URL' vps-init
+grep -q 'secret_line "安全入口" LUCKY_SAFE_URL' lib/app/*.sh vps-init
 grep -q 'Lucky SafeURL' verify/verify.sh
-grep -q 'https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}' vps-init
+grep -q 'https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL:-zhg}' lib/app/*.sh vps-init
 python3 verify/tests/test_lucky_behavior.py
 python3 verify/tests/test_docker_merge.py
 python3 verify/tests/test_xui_settings.py
 bash verify/tests/test_shell_behaviors.sh
 bash verify/tests/test_firewall.sh
 python3 verify/tests/test_ssh_rollback.py
+python3 verify/tests/test_workflows.py
+python3 verify/tests/test_bootstrap.py
 
 # Stability v1.3.6: behavioral regression coverage and safety boundaries.
 grep -q 'systemd-run --quiet --unit=' core/ssh.sh
 grep -q 'render_ssh_stage_config' core/ssh.sh
-grep -q 'VPSINIT_VERSION=' vps-init
-grep -q 'vps-init upgrade-system' vps-init
-grep -q 'source "$ROOT_DIR/lib/network_tools.sh"' vps-init
-grep -q 'vps-init network-tools' vps-init
+grep -q 'VPSINIT_VERSION=' lib/app/*.sh vps-init
+grep -q 'vps-init upgrade-system' lib/app/*.sh vps-init
+grep -q 'source "$ROOT_DIR/lib/network_tools.sh"' lib/app/*.sh vps-init
+grep -q 'vps-init network-tools' lib/app/*.sh vps-init
 grep -q 'network_tools_tcpfit' lib/network_tools.sh
 grep -q '38fbf5af30daf87735f2ffbc5e0905033ee2b86e' lib/network_tools.sh
 grep -q '8331cc40950229a3280ce32406330a85b1a3d21ba398a4db3dc7e25c39783741' lib/network_tools.sh
@@ -423,7 +425,7 @@ grep -q 'args=(-v4 --route --route-protocol tcp)' lib/network_tools.sh
 grep -q 'a115699ba3bd5ef8c7a975d3c8e50a130fdf4331' lib/network_tools.sh
 python3 - <<'PY_NETWORK_TOOLS'
 from pathlib import Path
-s=Path("vps-init").read_text()
+s=(Path("vps-init").read_text()+Path("lib/app/menu.sh").read_text()+Path("lib/app/deploy.sh").read_text())
 deploy=s.index('log_info "开始部署 Profile')
 tail=s[deploy:]
 assert "network_tools_tcpfit" not in tail
@@ -447,11 +449,11 @@ grep -q '/var/cache/apt/archives/lock' lib/common.sh
 grep -q 'apt_get_with_lock_retry install -y docker-ce' optional/docker/apply.sh
 # Baseline tooling must cover on-server config editing, including Ubuntu Minimal.
 grep -q 'dnsutils nano vim-tiny git less' core/system.sh
-grep -q 'edit_config_file()' vps-init
-grep -q 'edit_config_file "$DEFAULT_CFG"' vps-init
-grep -q 'apt_get_with_lock_retry install -y nano' vps-init
-grep -q '应用当前配置 / 首次部署' vps-init
-grep -q '重新选择安装方案' vps-init
+grep -q 'edit_config_file()' lib/app/*.sh vps-init
+grep -q 'edit-config "$DEFAULT_CFG"' lib/app/menu.sh
+grep -q 'apt_get_with_lock_retry install -y nano' lib/app/*.sh vps-init
+grep -q '应用当前配置 / 首次部署' lib/app/*.sh vps-init
+grep -q '重新选择安装方案' lib/app/*.sh vps-init
 python3 - <<'PY_APT_LOCK'
 from pathlib import Path
 import re
@@ -480,14 +482,14 @@ grep -q '请输入大写 DD' lib/wizard.sh
 grep -q 'reinstall.sh reset' lib/wizard.sh
 
 # V1.2.5: wizard Profile migrations are transactional at the config-file level.
-grep -q '失败迁移残留：443 当前由 Xray 占用' vps-init
-grep -q '尝试自动恢复上一个已验证 Profile' lib/wizard.sh
-grep -q 'VPSINIT_ALLOW_PROFILE_SWITCH=1.*apply.*backup' lib/wizard.sh
+grep -q '失败迁移残留：443 当前由 Xray 占用' lib/app/*.sh vps-init
+grep -q '恢复已验证方案用 vps-init apply' lib/wizard.sh
+grep -q 'resume' lib/deployment.sh
 grep -q 'config.env.pending' lib/wizard.sh
 grep -q '原有已验证配置未被候选配置覆盖' lib/wizard.sh
 python3 - <<'PY_CONFIG_TXN'
 from pathlib import Path
-s=Path("vps-init").read_text()
+s=(Path("vps-init").read_text()+Path("lib/app/menu.sh").read_text()+Path("lib/app/deploy.sh").read_text())
 assert 'resolve_runtime_ports\npersist_config "$cfg"\ncore_swap' not in s
 verify=s.index('if verify_all; then')
 persist=s.index('persist_config "$cfg"', verify)

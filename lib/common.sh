@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+shopt -s inherit_errexit
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="/var/lib/vps-init"
@@ -14,7 +15,7 @@ BACKUP_DIR="${BACKUP_ROOT}/${RUN_TS}"
 # shellcheck source=log.sh
 source "${ROOT_DIR}/lib/log.sh"
 
-trap 'rc=$?; log_error "命令失败（exit=${rc}）: ${BASH_COMMAND}"; exit "$rc"' ERR
+trap 'rc=$?; if [[ "$rc" != 10 && "$rc" != 12 && "$rc" != 42 ]]; then log_error "操作失败（exit=${rc}，${BASH_SOURCE[0]:-bash}:${LINENO}）；请检查网络及服务日志。"; fi; exit "$rc"' ERR
 
 require_root() { [[ ${EUID:-$(id -u)} -eq 0 ]] || die "请使用 root 运行。"; }
 command_exists() { command -v "$1" >/dev/null 2>&1; }
@@ -55,51 +56,14 @@ PY2
 }
 
 shell_quote() { printf '%q' "$1"; }
-state_set() {
-  local key="$1" value="$2" tmp
-  ensure_dir "$STATE_DIR"; touch "$STATE_FILE"; chmod 600 "$STATE_FILE"
-  tmp="$(mktemp)"
-  grep -v -E "^${key}=" "$STATE_FILE" > "$tmp" || true
-  printf '%s=%q\n' "$key" "$value" >> "$tmp"
-  install -m 600 "$tmp" "$STATE_FILE"
-  rm -f "$tmp"
-  export "$key=$value"
-}
-state_load() {
-  ensure_dir "$STATE_DIR"
-  if [[ -f "$STATE_FILE" ]]; then
-    # root-only state created by this project.
-    # shellcheck disable=SC1090
-    source "$STATE_FILE"
-  fi
-}
-
-secret_set() {
-  local key="$1" value="$2" tmp
-  touch "$SECRETS_FILE"; chmod 600 "$SECRETS_FILE"
-  tmp="$(mktemp)"
-  grep -v -E "^${key}=" "$SECRETS_FILE" > "$tmp" || true
-  printf '%s=%s\n' "$key" "$value" >> "$tmp"
-  install -m 600 "$tmp" "$SECRETS_FILE"
-  rm -f "$tmp"
-}
-
+source "$ROOT_DIR/lib/state.sh"
+source "$ROOT_DIR/lib/config.sh"
 copy_project_persistent() {
   ensure_dir "$PERSIST_DIR"
   if [[ "$(readlink -f "$ROOT_DIR")" != "$(readlink -f "$PERSIST_DIR")" ]]; then
     tar -C "$ROOT_DIR" --exclude='.git' --exclude='config.env' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' -cf - . | tar -C "$PERSIST_DIR" -xf -
   fi
   chmod +x "$PERSIST_DIR/vps-init" 2>/dev/null || true
-}
-
-persist_config() {
-  local src="$1" dst="$PERSIST_DIR/config.env"
-  ensure_dir "$PERSIST_DIR"
-  if [[ "$(readlink -f "$src")" == "$(readlink -f "$dst" 2>/dev/null || printf '%s' "$dst")" ]]; then
-    chmod 600 "$dst"
-  else
-    install -m 600 "$src" "$dst"
-  fi
 }
 
 wait_apt_lock() {
@@ -337,51 +301,4 @@ lucky_api() {
     base="${base}/${safe}"
   fi
   python3 "$ROOT_DIR/modules/lucky/lucky_api.py" --base "$base" "$@"
-}
-
-set_config_defaults() {
-  PROFILE="reality-only"
-  PROVIDER=""
-  SERVER_NAME=""
-  SSH_PORT="22"
-  SSH_PUBLIC_KEY=""
-  SSH_IDENTITY_HINT=""
-  ROOT_DOMAIN=""
-  DNS_PROVIDER="cloudflare"
-  LE_EMAIL=""
-  LUCKY_DOMAIN_OVERRIDE=""
-  PANEL_DOMAIN_OVERRIDE=""
-  NODE_DOMAIN_OVERRIDE=""
-  REALITY_TARGET_MODE="auto"
-  REALITY_TARGET=""
-  # Avoid Cloudflare targets by default: failed REALITY authentication is
-  # forwarded to target and shared-CDN targets are easier to abuse as relays.
-  REALITY_CANDIDATES="dl.google.com,www.apple.com,www.google.com,github.io"
-  # Fallback-only throttling; valid REALITY clients are not rate-limited.
-  REALITY_FALLBACK_AFTER_BYTES="1048576"
-  REALITY_FALLBACK_UPLOAD_BPS="65536"
-  REALITY_FALLBACK_UPLOAD_BURST_BPS="131072"
-  REALITY_FALLBACK_DOWNLOAD_BPS="131072"
-  REALITY_FALLBACK_DOWNLOAD_BURST_BPS="262144"
-  ENABLE_SUBSCRIPTION="auto"
-  SUBSCRIPTION_EXPOSE_MODE="auto"
-  SUBSCRIPTION_PORT="2096"
-  XUI_PANEL_URI_PATH="/zhg/"
-  XUI_SUB_URI_PATH="/zhg/"
-  ENABLE_DOCKER="false"
-  DOCKER_INSTALL_SOURCE="official"
-  ENABLE_CF_WS="false"
-  ENABLE_CF_PREFERRED="false"
-  ENABLE_CLOUDFLARESUB="false"
-}
-
-load_config() {
-  local cfg="${1:-${ROOT_DIR}/config.env}"
-  if [[ ! -f "$cfg" ]]; then
-    die "未找到配置文件 $cfg。请先运行 vps-init wizard，或复制 config.env.example 后编辑。"
-  fi
-  set_config_defaults
-  # shellcheck disable=SC1090
-  source "$cfg"
-  resolve_auto_settings
 }

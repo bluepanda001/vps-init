@@ -30,7 +30,7 @@ module_lucky() {
   if [[ ! -x /opt/lucky/lucky ]]; then
     log_info "安装 Lucky ${ver}（官方稳定 release，校验 SHA-256）..."
     tmp=$(mktemp -d); url="https://github.com/gdy666/lucky/releases/download/v${ver}/lucky_${ver}_Linux_${arch}.tar.gz"
-    curl -fL --retry 3 -o "$tmp/lucky.tar.gz" "$url"
+    curl -fL --retry 3 --connect-timeout 10 --max-time 180 -o "$tmp/lucky.tar.gz" "$url"
     echo "${expected}  $tmp/lucky.tar.gz" | sha256sum -c -
     mkdir -p /opt/lucky; tar -xzf "$tmp/lucky.tar.gz" -C /opt/lucky
     if [[ ! -x /opt/lucky/lucky ]]; then
