@@ -15,6 +15,7 @@ deployment_exit() {
   fi
 }
 deployment_begin() {
+  local cfg="$1"
   ensure_dir "$STATE_DIR"
   exec 9>"$STATE_DIR/deploy.lock"
   flock -n 9 || die "已有部署正在运行，请等待完成。"

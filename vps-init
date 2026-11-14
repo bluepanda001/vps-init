@@ -70,9 +70,9 @@ source "$ROOT_DIR/lib/app/display.sh"
 source "$ROOT_DIR/lib/app/menu.sh"
 source "$ROOT_DIR/lib/deployment.sh"
 
-cmd="${1:-menu}"
+command_name="${1:-menu}"
 cfg="${2:-$DEFAULT_CFG}"
-case "$cmd" in
+case "$command_name" in
   menu) menu; exit 0 ;;
   wizard|install)
     require_root
@@ -107,13 +107,13 @@ case "$cmd" in
   info) require_root; show_info_summary "$cfg"; exit 0 ;;
   apply|verify|preflight) ;;
   -h|--help|help) usage; exit 0 ;;
-  *) usage; die "未知命令: $cmd" ;;
+  *) usage; die "未知命令: $command_name" ;;
 esac
 
 require_root
 load_runtime_config "$cfg"
 
-if [[ "$cmd" == preflight ]]; then core_preflight; exit 0; fi
-if [[ "$cmd" == verify ]]; then verify_all; exit $?; fi
+if [[ "$command_name" == preflight ]]; then core_preflight; exit 0; fi
+if [[ "$command_name" == verify ]]; then verify_all; exit $?; fi
 
 deploy_apply

@@ -27,8 +27,8 @@ stop_managed_service() {
 
 prepare_profile_transition() {
   [[ -n "${PREVIOUS_DEPLOYED_PROFILE:-}" ]] || return 0
-  # base-only owns no web/node services; never stop an administrator's stack.
-  [[ "$PREVIOUS_DEPLOYED_PROFILE" != base-only ]] || return 0
+  # Ownership is checked per service, including components left by an
+  # interrupted migration from base-only that need to be reconciled.
 
   if [[ "$PREVIOUS_DEPLOYED_PROFILE" != "$PROFILE" ]]; then
     [[ "${VPSINIT_ALLOW_PROFILE_SWITCH:-0}" == "1" ]] || die "Profile 切换未获确认。"
@@ -77,7 +77,7 @@ prepare_profile_transition() {
 }
 
 deploy_apply() {
-deployment_begin
+deployment_begin "$cfg"
 log_info "开始部署 Profile: $PROFILE"
 deployment_step prepare_profile_transition
 deployment_step core_preflight

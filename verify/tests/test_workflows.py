@@ -1,5 +1,6 @@
 """Behavioral tests: no real package, service, firewall or disk operations."""
 import os
+import pty
 from pathlib import Path
 import subprocess
 import tempfile
@@ -9,6 +10,19 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class Workflows(unittest.TestCase):
+    def tty_shell(self, script, input_text, expected=0):
+        master, slave = pty.openpty()
+        try:
+            proc = subprocess.Popen(['bash', '-c', script], cwd=ROOT,
+                                    stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            os.write(master, input_text.encode())
+            out, err = proc.communicate(timeout=10)
+            self.assertEqual(proc.returncode, expected, repr(out + err))
+            return out.decode()
+        finally:
+            os.close(master)
+            os.close(slave)
+
     def run_sh(self, script, code=0):
         with tempfile.TemporaryDirectory() as td:
             env = os.environ | {"TD": td, "REPO": str(ROOT)}
@@ -118,7 +132,7 @@ set +e
 trap - ERR
 (
   set -e
-  deployment_begin
+  deployment_begin "$cfg"
   fail_download() { return 28; }
   deployment_step fail_download
   touch "$TD/unsafe"
@@ -141,7 +155,7 @@ echo running > "$PERSIST_DIR/pending.env"
 flock() { return 1; }
 set +e
 trap - ERR
-(set -e; deployment_begin)
+(set -e; deployment_begin "$cfg")
 rc=$?
 set -e
 [[ "$rc" != 0 ]]
@@ -175,6 +189,36 @@ edit_config_file() { printf 'PROFILE=bad\\n' > "$1"; }
 if edit_config_safe "$TD/config.env"; then exit 99; fi
 cmp "$TD/config.env" "$TD/original"
 ''')
+
+    def test_menu_returns_after_child_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            entry = Path(td) / 'vps-init'
+            entry.write_text('#!/usr/bin/env bash\nexit 77\n')
+            entry.chmod(0o700)
+            script = f'''set -Eeuo pipefail
+source lib/app/menu.sh
+ROOT_DIR='{td}'
+DEFAULT_CFG='{td}/missing.env'
+require_root() {{ :; }}
+wizard_banner() {{ echo MENU_READY; }}
+clear() {{ :; }}
+menu
+'''
+            out = self.tty_shell(script, '3\n\n8\n0\n')
+            self.assertEqual(out.count('MENU_READY'), 3)
+
+    def test_dd_download_failure_never_reboots(self):
+        script = '''set -Eeuo pipefail
+source lib/common.sh
+source lib/wizard.sh
+require_root() { :; }
+systemd-detect-virt() { echo kvm; }
+curl() { return 28; }
+chmod() { exit 99; }
+systemctl() { exit 99; }
+wizard_reinstall
+'''
+        self.tty_shell(script, 'DD\n', 28)
 
 
 if __name__ == '__main__':
