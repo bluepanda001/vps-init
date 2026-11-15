@@ -41,6 +41,10 @@ edit_config_file() {
 
 edit_config_safe() {
   local config_file="$1" draft rc=0
+  ensure_dir "$STATE_DIR"
+  exec 9>"$STATE_DIR/deploy.lock"
+  flock -n 9 || die "已有部署或组件操作正在运行，暂不能编辑配置。"
+  [[ ! -d "$STATE_DIR/component-operation" ]] || die "存在组件恢复候选，请先运行 vps-init components resume。"
   [[ -f "$config_file" ]] || die "尚无配置，请先运行向导。"
   draft="$(mktemp "${config_file}.edit.XXXXXX")"
   atomic_config_copy "$config_file" "$draft"
@@ -71,27 +75,28 @@ menu() {
   1. 应用当前配置 / 首次部署（也用于修复）
   2. 继续上次失败或中断的部署
   3. 重新选择安装方案
+  4. 组件管理（增装 / 修复 / 恢复）
 【系统与服务】
-  4. 运行核心验收
-  5. 查看部署信息
-  6. 查看当前状态
-  7. Web Gateway / Lucky
+  5. 运行核心验收
+  6. 查看部署信息
+  7. 查看当前状态
+  8. Web Gateway / Lucky
 【配置与凭据】
-  8. 查看敏感凭据
-  9. 修改管理账号 / 密码
- 10. 编辑并校验配置（保存后按 1 应用）
+  9. 查看敏感凭据
+ 10. 修改管理账号 / 密码
+ 11. 编辑并校验配置（保存后按 1 应用）
 【网络工具】
- 11. TCPFit 调优 / TcpQuality 测速
+ 12. TCPFit 调优 / TcpQuality 测速
 【更新与维护】
- 12. 更新 VPS Init
- 13. 查看服务日志
- 14. 系统完整升级（apt upgrade）
+ 13. 更新 VPS Init
+ 14. 查看服务日志
+ 15. 系统完整升级（apt upgrade）
 【系统重装】
- 15. 一键 DD（清空系统盘，需输入 DD 确认）
+ 16. 一键 DD（清空系统盘，需输入 DD 确认）
   0. 退出
 TXT
     local n
-    read -r -p "请选择 [0-15]: " n || return 0
+    read -r -p "请选择 [0-16]: " n || return 0
     case "$n" in
       1)
         if [[ -f "$DEFAULT_CFG" ]]; then
@@ -108,26 +113,27 @@ TXT
         "$ROOT_DIR/vps-init" wizard || wizard_rc=$?
         (( wizard_rc == 42 )) && exit 0
         ;;
-      4) "$ROOT_DIR/vps-init" verify "$DEFAULT_CFG" || true ;;
-      5) "$ROOT_DIR/vps-init" info "$DEFAULT_CFG" || true ;;
-      6) "$ROOT_DIR/vps-init" status "$DEFAULT_CFG" || true ;;
-      7) "$ROOT_DIR/vps-init" gateway || true ;;
-      8)
+      4) "$ROOT_DIR/vps-init" components || true ;;
+      5) "$ROOT_DIR/vps-init" verify "$DEFAULT_CFG" || true ;;
+      6) "$ROOT_DIR/vps-init" info "$DEFAULT_CFG" || true ;;
+      7) "$ROOT_DIR/vps-init" status "$DEFAULT_CFG" || true ;;
+      8) "$ROOT_DIR/vps-init" gateway || true ;;
+      9)
         if [[ -f "$SECRETS_FILE" ]]; then
           echo "警告：下面包含密码、API Token/节点参数等敏感信息。"
           if wizard_yesno "确认显示？" n; then "$ROOT_DIR/vps-init" secrets || true; fi
         else echo "尚未生成凭据文件。"; fi
         ;;
-      9) "$ROOT_DIR/vps-init" passwd || true ;;
-      10)
+      10) "$ROOT_DIR/vps-init" passwd || true ;;
+      11)
         [[ -f "$DEFAULT_CFG" ]] || { echo "尚无配置，先运行安装向导。"; "$ROOT_DIR/vps-init" wizard || true; continue; }
         "$ROOT_DIR/vps-init" edit-config "$DEFAULT_CFG" || true
         ;;
-      11) "$ROOT_DIR/vps-init" network-tools || true ;;
-      12) "$ROOT_DIR/vps-init" update || true ;;
-      13) "$ROOT_DIR/vps-init" logs || true ;;
-      14) "$ROOT_DIR/vps-init" upgrade-system || true ;;
-      15) "$ROOT_DIR/vps-init" reinstall || true ;;
+      12) "$ROOT_DIR/vps-init" network-tools || true ;;
+      13) "$ROOT_DIR/vps-init" update || true ;;
+      14) "$ROOT_DIR/vps-init" logs || true ;;
+      15) "$ROOT_DIR/vps-init" upgrade-system || true ;;
+      16) "$ROOT_DIR/vps-init" reinstall || true ;;
       0) exit 0 ;;
       *) echo "输入无效。" ;;
     esac

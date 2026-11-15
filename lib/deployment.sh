@@ -19,6 +19,7 @@ deployment_begin() {
   ensure_dir "$STATE_DIR"
   exec 9>"$STATE_DIR/deploy.lock"
   flock -n 9 || die "已有部署正在运行，请等待完成。"
+  [[ ! -d "$STATE_DIR/component-operation" ]] || die "存在未完成的组件操作，请先运行 vps-init components resume。"
   ensure_dir "$PERSIST_DIR"
   if [[ "$(readlink -f "$cfg")" != "$(readlink -f "$PERSIST_DIR/pending.env" 2>/dev/null || true)" ]]; then
     atomic_config_copy "$cfg" "$PERSIST_DIR/pending.env"

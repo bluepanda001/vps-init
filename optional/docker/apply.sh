@@ -67,6 +67,9 @@ optional_docker() {
   tmp_key="$(mktemp)"
   if ! curl -fL --retry 3 --connect-timeout 10 --max-time 90 -o "$tmp_key" "$repo_url/gpg"; then
     rm -f "$tmp_key"
+    if [[ -n "${COMPONENT_OP:-}" ]]; then
+      die "Docker 源下载失败，请检查 DNS/出站 HTTPS。国内 VPS 可运行：vps-init components resume --source=aliyun；候选配置已保留。"
+    fi
     die "Docker 软件包源 GPG 公钥下载失败：$repo_url/gpg。请检查 DNS/出站 HTTPS；国内 VPS 可在 pending.env 中设 DOCKER_INSTALL_SOURCE=aliyun，再运行 vps-init resume。"
   fi
   if ! gpg --batch --show-keys "$tmp_key" >/dev/null 2>&1; then

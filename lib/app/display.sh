@@ -118,6 +118,10 @@ show_info_summary() {
       sub_base="https://${SERVER_IP}:${SUBSCRIPTION_PORT_SELECTED:-$SUBSCRIPTION_PORT}${SUBSCRIPTION_PATH}"
       reality_public="${SERVER_IP}:443"
     fi
+    reality_public="${REALITY_PUBLIC_ADDRESS:-${reality_public%:443}}:443"
+    if [[ "$SUBSCRIPTION_EXPOSE_MODE_RESOLVED" == direct-ip-https ]]; then
+      sub_base="https://${SERVER_IP}:${SUBSCRIPTION_PORT_SELECTED:-$SUBSCRIPTION_PORT}${SUBSCRIPTION_PATH}"
+    fi
     echo "  Reality Public    : $reality_public"
     echo "  Panel URL         : $panel_url"
     echo "  Subscription Base : $sub_base"

@@ -36,6 +36,10 @@ optional_cf_ws() {
   if [[ -z "$CF_WS_INTERNAL_PORT" ]]; then
     CF_WS_INTERNAL_PORT="$(random_port)"
   fi
+  # Persist identity before API/DNS mutations so retries reuse the same endpoint.
+  state_set CF_WS_DOMAIN "$CF_WS_DOMAIN"
+  state_set CF_WS_PATH "$CF_WS_PATH"
+  state_set CF_WS_INTERNAL_PORT "$CF_WS_INTERNAL_PORT"
 
   local api out inbound_id email
   api="$(xui_base_url)"
@@ -58,6 +62,13 @@ optional_cf_ws() {
 
   mkdir -p /etc/nginx/stream-conf.d /etc/nginx/sites-available /etc/nginx/sites-enabled
   printf '"%s" 127.0.0.1:8444; # vps-init cf-ws\n' "$CF_WS_DOMAIN" > "$map_file"
+
+  local sub_origin="http://127.0.0.1:${SUBSCRIPTION_PORT}"
+  local sub_tls=""
+  if [[ "$SUBSCRIPTION_EXPOSE_MODE_RESOLVED" == direct-ip-https ]]; then
+    sub_origin="https://${SERVER_IP}:${SUBSCRIPTION_PORT}"
+    sub_tls="proxy_ssl_verify on; proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;"
+  fi
 
   cat > "$site_file" <<EOF2
 # Managed by vps-init optional cf-ws.
@@ -99,7 +110,8 @@ server {
     # Separate alias because panel/subscription currently both default to /zhg/.
     location ^~ /sub/ {
         rewrite ^/sub/(.*)$ ${SUBSCRIPTION_PATH}\$1 break;
-        proxy_pass http://127.0.0.1:${SUBSCRIPTION_PORT};
+        proxy_pass ${sub_origin};
+        ${sub_tls}
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;

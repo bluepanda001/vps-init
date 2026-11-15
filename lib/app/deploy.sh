@@ -129,6 +129,7 @@ DEPLOYMENT_STEP=verify
 deployment_record running verify
 if verify_all; then
   persist_config "$cfg"
+  state_set INITIAL_PROFILE "${INITIAL_PROFILE:-${PREVIOUS_DEPLOYED_PROFILE:-$PROFILE}}"
   state_set DEPLOYED_PROFILE "$PROFILE"
   state_set DEPLOYED_VERSION "$VPSINIT_VERSION"
   state_set DEPLOYMENT_VERIFIED_AT "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"

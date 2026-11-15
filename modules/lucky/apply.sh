@@ -117,12 +117,14 @@ UNIT
 
   module_landing_service
   lucky_api --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" sync-cert --cert "$DOMAIN_CERT_FILE" --key "$DOMAIN_KEY_FILE" >/dev/null
+  local sub_origin="http://127.0.0.1:${SUBSCRIPTION_PORT}"
+  if [[ "$SUBSCRIPTION_EXPOSE_MODE_RESOLVED" == direct-ip-https ]]; then sub_origin="https://${SERVER_IP}:${SUBSCRIPTION_PORT}"; fi
   if [[ "$PROFILE" == "lucky-web" ]]; then
     lucky_api --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" configure-web-only \
       --lucky-domain "$LUCKY_DOMAIN" --landing-port 18080 >/dev/null
   else
     lucky_api --user "$LUCKY_USERNAME" --password "$LUCKY_PASSWORD" configure-web \
-      --panel-domain "$PANEL_DOMAIN" --node-domain "$NODE_DOMAIN" --lucky-domain "$LUCKY_DOMAIN" --panel-port "$XUI_PANEL_PORT" --sub-port "$SUBSCRIPTION_PORT" --landing-port 18080 >/dev/null
+      --panel-domain "$PANEL_DOMAIN" --node-domain "$NODE_DOMAIN" --lucky-domain "$LUCKY_DOMAIN" --panel-port "$XUI_PANEL_PORT" --sub-port "$SUBSCRIPTION_PORT" --sub-origin "$sub_origin" --landing-port 18080 >/dev/null
   fi
   # Apply Lucky SafeURL only after all authenticated loopback API automation
   # is complete, then restart once. The official CLI normalizes the stored value.
@@ -153,7 +155,9 @@ HOOK
   else
     secret_set LUCKY_PUBLIC_URL "https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL}"
     secret_set XUI_PUBLIC_URL "https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"
-    secret_set SUBSCRIPTION_BASE_URL "https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}"
+    if [[ "$SUBSCRIPTION_EXPOSE_MODE_RESOLVED" != direct-ip-https ]]; then
+      secret_set SUBSCRIPTION_BASE_URL "https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}"
+    fi
     log_ok "Lucky 8443 HTTPS 后端已配置；公网 443 由 Nginx Stream 分流，Lucky 管理、3x-ui 面板和订阅域名均已反代。Lucky 管理地址：https://${LUCKY_DOMAIN}/${LUCKY_SAFE_URL}"
   fi
 }
