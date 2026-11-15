@@ -20,7 +20,7 @@
 - [x] 1. lib/components.sh：组件查询、Profile 增量映射、依赖步骤计划；verify/tests/test_components.py 先验证失败，再实现所有 Profile 矩阵。
 - [x] 2. lib/app/components.sh：锁、候选、确认、备份、执行/验收/恢复；行为测试模拟失败、重复执行、配置提交、外部服务和端口冲突。
 - [x] 3. CLI、主菜单、完整部署互斥、兼容配置与节点地址；更新菜单 PTY 与安装入口检查。
-- [ ] 4. 文档、完整自测和 ShellCheck；独立审查后修复，推送功能分支和 PR。
+- [x] 4. 文档、完整自测和 ShellCheck；独立审查后修复，推送功能分支和 PR。
 
 ## Decisions / Results
 
@@ -29,3 +29,5 @@
 
 - 已独立审查并修复：公网地址验收、提交时配置竞争、混合监听归属、Docker 恢复切源。
 - 补充防护：旧 Reality 独占方案不能把未知 1443 入站当作项目拥有；SQLite WAL 使用一致性快照。
+
+- 最终本地验收：33 项组件测试、18 项工作流、完整 SELFTEST_OK、ShellCheck 错误级检查。功能分支推送并创建 PR，正式 Release 留待单独授权。

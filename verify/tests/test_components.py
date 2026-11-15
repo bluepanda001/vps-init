@@ -417,5 +417,16 @@ component_check_ports
 ''', 1)
 
 
+    def test_backup_failure_stops_before_any_module(self):
+        self.run_sh(self.execution_fixture() + r'''
+component_backup() { false; touch "$COMPONENT_OP/backup-ready"; }
+(component_change add docker) &
+child=$!; rc=0
+wait "$child" || rc=$?
+[[ $rc == 1 ]]
+[[ ! -f "$TD/executed" && ! -f "$STATE_DIR/component-operation/backup-ready" ]]
+''')
+
+
 if __name__ == '__main__':
     unittest.main()

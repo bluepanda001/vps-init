@@ -12,7 +12,7 @@
 
 本地 `verify/selftest.sh` 输出 SELFTEST_OK；ShellCheck `-S error` 通过。
 
-新增 32 项组件测试，包括所有 Profile 的 Docker 独立计划、六条拓扑扩展路径的模拟执行、依赖过滤、失败/中断恢复、切源、重复增装、未知字段和 UUID 保留、配置竞争、进程混合监听、未知 1443 入站、取消/EOF、锁冲突、真实 CLI 入口、PTY 子菜单、SQLite WAL 和 Lucky HTTPS 后端。
+新增 33 项组件测试，包括所有 Profile 的 Docker 独立计划、六条拓扑扩展路径的模拟执行、依赖过滤、失败/中断恢复、切源、重复增装、未知字段和 UUID 保留、配置竞争、进程混合监听、未知 1443 入站、取消/EOF、备份失败中止、锁冲突、真实 CLI 入口、PTY 子菜单、SQLite WAL 和 Lucky HTTPS 后端。
 
 已有 18 项工作流测试（主菜单已更新为 1–16）、3 项安装器测试及 SSH/UFW/Docker/Lucky/3x-ui 等测试继续通过。安装器测试确认新模块随更新安装。
 
