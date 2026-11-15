@@ -28,7 +28,8 @@ module_reality() {
       mapfile -t target_rows < <(jq -r '[.[] | select(.feasible==true and (.privateTarget|not))][0:3][] | [.target, (.latencyMs|tostring), (.tls13|tostring), (.h2|tostring), (.x25519|tostring)] | @tsv' <<<"$scan")
       (( ${#target_rows[@]} > 0 )) || die "3x-ui Reality Scanner 没有找到 feasible 目标。可改 REALITY_TARGET_MODE=manual 后指定目标。"
 
-      echo "3x-ui Reality Target 检测结果："
+      echo "3x-ui Reality Target 检测结果（已过滤高风险/私网目标）："
+      echo "提示：上游可能返回内置候选清单；REALITY_CANDIDATES 是扫描请求提示，不保证限定返回目标。"
       local idx=1 row tgt latency tls13 h2 x25519
       for row in "${target_rows[@]}"; do
         IFS=$'\t' read -r tgt latency tls13 h2 x25519 <<<"$row"

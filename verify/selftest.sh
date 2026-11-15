@@ -405,6 +405,7 @@ bash verify/tests/test_shell_behaviors.sh
 bash verify/tests/test_firewall.sh
 python3 verify/tests/test_ssh_rollback.py
 python3 verify/tests/test_workflows.py
+python3 verify/tests/test_report_regressions.py
 python3 verify/tests/test_bootstrap.py
 
 # Stability v1.3.6: behavioral regression coverage and safety boundaries.

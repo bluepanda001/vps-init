@@ -13,6 +13,8 @@ core_system() {
   log_ok "基础系统依赖已确保可用。"
 }
 
+system_reboot_required() { [[ -f /var/run/reboot-required ]]; }
+
 core_system_upgrade() {
   require_root
   log_warn "即将执行 apt-get update + apt-get -y upgrade；这可能更新内核/系统组件并产生 reboot-required。"
@@ -22,5 +24,6 @@ core_system_upgrade() {
   apt_get_with_lock_retry update
   apt_get_with_lock_retry -y upgrade
   log_ok "系统升级完成。"
-  [[ -f /var/run/reboot-required ]] && log_warn "系统提示需要重启。"
+  if system_reboot_required; then log_warn "系统提示需要重启。"; fi
+  return 0
 }
