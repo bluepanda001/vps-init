@@ -45,6 +45,9 @@ VPS Init ${VPSINIT_VERSION}
   vps-init wizard             # 首次/重新生成配置并部署
   vps-init apply [config.env] # 按配置部署/继续部署
   vps-init resume             # 恢复上次失败或中断的部署
+  vps-init components         # 组件状态、增装、修复和恢复
+  vps-init components plan|add|repair docker|reality|lucky|nginx|subscription|cf-ws
+  vps-init components status|resume
   vps-init edit-config        # 校验后保存配置，不自动部署
   vps-init verify [config.env]
   vps-init preflight [config.env]
@@ -69,11 +72,14 @@ source "$ROOT_DIR/lib/app/deploy.sh"
 source "$ROOT_DIR/lib/app/display.sh"
 source "$ROOT_DIR/lib/app/menu.sh"
 source "$ROOT_DIR/lib/deployment.sh"
+source "$ROOT_DIR/lib/components.sh"
+source "$ROOT_DIR/lib/app/components.sh"
 
 command_name="${1:-menu}"
 cfg="${2:-$DEFAULT_CFG}"
 case "$command_name" in
   menu) menu; exit 0 ;;
+  components) require_root; component_command "${@:2}"; exit 0 ;;
   wizard|install)
     require_root
     wizard_run "$PERSIST_DIR/config.env"

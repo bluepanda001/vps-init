@@ -11,6 +11,7 @@ validate_config() {
 
   case "$REALITY_TARGET_MODE" in auto|manual) ;; *) die "REALITY_TARGET_MODE 只能是 auto/manual。" ;; esac
   if profile_has_xui; then
+    [[ -z "${REALITY_PUBLIC_ADDRESS:-}" || "$REALITY_PUBLIC_ADDRESS" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || die "REALITY_PUBLIC_ADDRESS 只接受 IPv4 或主机名。"
     [[ "$REALITY_TARGET_MODE" != manual || -n "$REALITY_TARGET" ]] || die "manual 模式必须设置 REALITY_TARGET。"
     if [[ "$REALITY_TARGET_MODE" == manual ]]; then
       local reality_target_lc="${REALITY_TARGET,,}"

@@ -32,6 +32,7 @@ set_config_defaults() {
   NODE_DOMAIN_OVERRIDE=""
   REALITY_TARGET_MODE="auto"
   REALITY_TARGET=""
+  REALITY_PUBLIC_ADDRESS=""
   # Avoid Cloudflare targets by default: failed REALITY authentication is
   # forwarded to target and shared-CDN targets are easier to abuse as relays.
   REALITY_CANDIDATES="dl.google.com,www.apple.com,www.google.com,github.io"

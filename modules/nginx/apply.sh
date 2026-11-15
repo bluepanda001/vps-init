@@ -18,6 +18,13 @@ stream {
 NGINX
   fi
 
+  local sub_origin="http://127.0.0.1:${SUBSCRIPTION_PORT}"
+  local sub_tls=""
+  if [[ "$SUBSCRIPTION_EXPOSE_MODE_RESOLVED" == direct-ip-https ]]; then
+    sub_origin="https://${SERVER_IP}:${SUBSCRIPTION_PORT}"
+    sub_tls="proxy_ssl_verify on; proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;"
+  fi
+
   cat > /etc/nginx/stream-conf.d/vps-init.conf <<EOF2
 # Managed by vps-init.
 # REALITY uses its camouflage SNI; all other TLS goes to the HTTPS backend.
@@ -79,7 +86,8 @@ server {
     ssl_certificate_key ${DOMAIN_KEY_FILE};
     ssl_protocols TLSv1.2 TLSv1.3;
     location / {
-        proxy_pass http://127.0.0.1:${SUBSCRIPTION_PORT};
+        proxy_pass ${sub_origin};
+        ${sub_tls}
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -112,7 +120,9 @@ nginx -t && systemctl reload nginx
 HOOK
   chmod 755 /etc/letsencrypt/renewal-hooks/deploy/90-vps-init-nginx
   secret_set XUI_PUBLIC_URL "https://${PANEL_DOMAIN}${XUI_WEB_BASE_PATH}"
-  secret_set SUBSCRIPTION_BASE_URL "https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}"
+  if [[ "$SUBSCRIPTION_EXPOSE_MODE_RESOLVED" != direct-ip-https ]]; then
+    secret_set SUBSCRIPTION_BASE_URL "https://${NODE_DOMAIN}${SUBSCRIPTION_PATH}"
+  fi
   if [[ "$PROFILE" == "lucky-reality" ]]; then
     log_ok "Nginx Stream 443 SNI 分流已配置：Reality -> 1443，普通 HTTPS -> Lucky 8443。"
   else

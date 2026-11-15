@@ -64,6 +64,8 @@ mv() {
                 self.assertEqual((install / 'old').read_text(), 'old program')
             else:
                 self.assertTrue((install / 'lib/app/deploy.sh').exists())
+                self.assertTrue((install / 'lib/components.sh').exists())
+                self.assertTrue((install / 'lib/app/components.sh').exists())
                 self.assertTrue((td / 'entry').is_symlink())
 
     def test_upgrade_preserves_config_and_pending(self):

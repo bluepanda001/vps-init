@@ -81,6 +81,7 @@ verify_mihomo_public_endpoint() {
   else
     expected_server="$NODE_DOMAIN"
   fi
+  expected_server="${REALITY_PUBLIC_ADDRESS:-$expected_server}"
   grep -F "  server: ${expected_server}" <<<"$body" >/dev/null &&
     grep -F '  port: 443' <<<"$body" >/dev/null
 }

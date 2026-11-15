@@ -110,6 +110,7 @@ module_reality() {
   else
     public_addr="$NODE_DOMAIN"
   fi
+  public_addr="${REALITY_PUBLIC_ADDRESS:-$public_addr}"
   public_port=443
   python3 "$ROOT_DIR/modules/3x-ui/xui_api.py" --base "$api" --token "$XUI_API_TOKEN" ensure-host \
     --inbound-id "$inbound_id" --remark VPSINIT-Public-Endpoint \
