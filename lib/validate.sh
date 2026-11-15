@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 validate_config() {
   case "$PROFILE" in base-only|lucky-web|reality-only|nginx-reality|lucky-reality) ;; *) die "PROFILE 无效: $PROFILE" ;; esac
-  [[ "$SSH_PORT" =~ ^[0-9]+$ ]] && ((SSH_PORT>=1 && SSH_PORT<=65535)) || die "SSH_PORT 无效。"
+  [[ "$SSH_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && ((SSH_PORT<=65535)) || die "SSH_PORT 无效。"
 
   if profile_has_domain; then
     [[ -n "$ROOT_DOMAIN" ]] || die "$PROFILE 必须设置 ROOT_DOMAIN。"
@@ -29,7 +29,7 @@ validate_config() {
     done
   fi
 
-  [[ "$SUBSCRIPTION_PORT" =~ ^[0-9]+$ ]] && ((SUBSCRIPTION_PORT>=1 && SUBSCRIPTION_PORT<=65535)) || die "SUBSCRIPTION_PORT 无效。"
+  [[ "$SUBSCRIPTION_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && ((SUBSCRIPTION_PORT<=65535)) || die "SUBSCRIPTION_PORT 无效。"
   [[ "${XUI_PANEL_URI_PATH:-/zhg/}" == /* && "${XUI_PANEL_URI_PATH:-/zhg/}" == */ ]] || die "XUI_PANEL_URI_PATH 必须以 / 开头和结尾。"
   if [[ -n "${XUI_SUB_URI_PATH:-}" ]]; then
     [[ "$XUI_SUB_URI_PATH" == /* && "$XUI_SUB_URI_PATH" == */ ]] || die "XUI_SUB_URI_PATH 必须以 / 开头和结尾。"

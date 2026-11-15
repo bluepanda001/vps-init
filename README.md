@@ -493,3 +493,16 @@ SHA256SUMS
 - `ENABLE_CF_WS` 已正式支持域名 Profile；`ENABLE_CF_PREFERRED`、`ENABLE_CLOUDFLARESUB` 仍为预留扩展并保持 fail-closed。
 - V1.3.0 不内置 NPM 或应用安装模板；Web/Docker 应用由用户自行安装，`lucky-reality` 作为推荐的图形化 Web Gateway。
 - 这是个人 VPS 实用安全基线，不是 CIS/企业合规基线。
+## v1.4.0：部署恢复与维护
+
+主菜单按安装部署、系统服务、配置凭据、网络、更新维护、系统重装分组，保留原有快捷编号。
+`vps-init resume` 使用 `/opt/vps-init/pending.env` 继续失败或中断的候选部署；
+`vps-init apply` 使用已保存配置重新检查并修复。恢复会重复安全检查，复用已安装组件及原有节点身份。
+最后执行阶段保存在 `/var/lib/vps-init/deployment.env`，不含密码或 Token。
+
+`vps-init edit-config` 先编辑临时副本，校验通过再原子替换；保存不自动部署。
+失败的 Profile 切换不会自动发起第二轮回滚部署：继续候选方案用 `resume`，恢复原已验证方案用 `apply`。
+候选配置可能含尚未应用的管理密码，只允许 root 读取；验收提交时会移除临时密码输入和迁移授权。
+
+结构设计与风险见 [架构审查](docs/architecture-review.md)，验证记录见 [验收报告](docs/refactor-acceptance.md)。
+

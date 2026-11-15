@@ -2,7 +2,7 @@ name: Self Test
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'refactor/**']
   pull_request:
 
 permissions:
@@ -15,3 +15,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run VPS Init self-test
         run: bash verify/selftest.sh
+      - name: ShellCheck errors
+        run: shellcheck -S error vps-init install.sh lib/*.sh lib/app/*.sh core/*.sh modules/*/*.sh optional/*/*.sh verify/*.sh verify/tests/*.sh

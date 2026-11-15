@@ -62,6 +62,11 @@ jobs:
             --exclude 'dist' \
             --exclude 'docs' \
             --exclude 'config.env' \
+            --exclude 'pending.env' \
+            --exclude '.config.env.*' \
+            --exclude '*.env.tmp.*' \
+            --exclude '*.env.clean.*' \
+            --exclude '*.env.edit.*' \
             --exclude '.env' \
             --exclude '.env.*' \
             --exclude '.secrets' \
@@ -85,7 +90,7 @@ jobs:
 
           if find dist/stage/vps-init \
                \( -type d \( -name '.secrets' -o -name 'secrets' \) \
-               -o -type f \( -name 'config.env' -o -name '.env' -o -name '.env.*' \
+               -o -type f \( -name 'config.env' -o -name 'pending.env' -o -name '.config.env.*' -o -name '*.env.tmp.*' -o -name '*.env.clean.*' -o -name '*.env.edit.*' -o -name '.env' -o -name '.env.*' \
                               -o -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' \
                               -o -name 'id_rsa*' -o -name 'id_ed25519*' \) \) \
                -print -quit | grep -q .; then

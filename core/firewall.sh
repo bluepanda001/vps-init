@@ -69,7 +69,7 @@ remove_stale_vps_init_ufw_rules() {
 vpsinit_ufw_tcp_allowed() {
   local port="$1"
   ufw status 2>/dev/null |
-    grep -Eq "^${port}/tcp[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+Anywhere([[:space:]]|$)"
+    grep -E "^${port}/tcp[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+Anywhere([[:space:]]|$)" >/dev/null
 }
 
 core_firewall() {
@@ -80,7 +80,7 @@ core_firewall() {
   [[ -f /etc/ufw/user6.rules ]] && cp -a /etc/ufw/user6.rules "$BACKUP_DIR/ufw/user6.rules" || true
 
   local was_active=false port
-  if ufw status 2>/dev/null | grep -q '^Status: active'; then
+  if ufw status 2>/dev/null | grep '^Status: active' >/dev/null; then
     was_active=true
   fi
 

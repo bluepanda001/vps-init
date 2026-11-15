@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+shopt -s inherit_errexit
 
 wizard_banner() {
   local ver="unknown"
@@ -21,8 +22,9 @@ wizard_select() {
     echo "$prompt" >&2
     local i=1 opt
     for opt in "$@"; do printf '  %d. %s\n' "$i" "$opt" >&2; i=$((i+1)); done
-    read -r -p "请选择 [1-$#]: " reply
-    [[ "$reply" =~ ^[0-9]+$ ]] && (( reply >= 1 && reply <= $# )) && { printf '%s\n' "$reply"; return 0; }
+    read -r -p "请选择 [1-$#，0 取消]: " reply || return 10
+    [[ "$reply" != 0 ]] || return 10
+    [[ "$reply" =~ ^[1-9][0-9]*$ && ${#reply} -le 3 ]] && (( reply <= $# )) && { printf '%s\n' "$reply"; return 0; }
     echo "输入无效，请重新选择。" >&2
   done
 }
@@ -57,9 +59,9 @@ wizard_select_docker_install_source() {
 wizard_yesno() {
   local prompt="$1" default="${2:-y}" reply
   if [[ "$default" == y ]]; then
-    read -r -p "$prompt [Y/n]: " reply; reply="${reply:-y}"
+    read -r -p "$prompt [Y/n]: " reply || return 1; reply="${reply:-y}"
   else
-    read -r -p "$prompt [y/N]: " reply; reply="${reply:-n}"
+    read -r -p "$prompt [y/N]: " reply || return 1; reply="${reply:-n}"
   fi
   [[ "$reply" =~ ^[Yy]$ ]]
 }
@@ -67,10 +69,10 @@ wizard_yesno() {
 wizard_prompt_default() {
   local prompt="$1" default="${2:-}" reply
   if [[ -n "$default" ]]; then
-    read -r -p "$prompt [$default]: " reply
+    read -r -p "$prompt [$default]: " reply || return 10
     printf '%s\n' "${reply:-$default}"
   else
-    read -r -p "$prompt: " reply
+    read -r -p "$prompt: " reply || return 10
     printf '%s\n' "$reply"
   fi
 }
@@ -78,9 +80,21 @@ wizard_prompt_default() {
 
 wizard_prompt_secret() {
   local prompt="$1" reply
-  read -r -s -p "$prompt: " reply
+  read -r -s -p "$prompt: " reply || return 10
   echo >&2
   printf '%s\n' "$reply"
+}
+
+wizard_prompt_port() {
+  local value
+  while true; do
+    value="$(wizard_prompt_default "$1" "$2")" || return $?
+    if [[ "$value" =~ ^[1-9][0-9]{0,4}$ ]] && (( value <= 65535 )); then
+      printf '%s\n' "$value"
+      return 0
+    fi
+    echo "端口必须是 1–65535，请重新输入。" >&2
+  done
 }
 
 wizard_validate_admin_username() {
@@ -298,6 +312,7 @@ wizard_reinstall() {
     systemctl reboot
     # A requested reboot is a successful terminal action; do not propagate a
     # synthetic non-zero status that the global ERR trap could report as failure.
+    [[ "${VPSINIT_FIRST_DD:-0}" != 1 ]] || exit 42
     exit 0
   fi
 
@@ -349,11 +364,8 @@ SSH_IDENTITY_HINT=$(wizard_shell_quote_value "$W_SSH_IDENTITY_HINT")
 ROOT_DOMAIN=$(wizard_shell_quote_value "$W_ROOT_DOMAIN")
 DNS_PROVIDER="cloudflare"
 LE_EMAIL=$(wizard_shell_quote_value "$W_LE_EMAIL")
-PANEL_DOMAIN_OVERRIDE=""
-NODE_DOMAIN_OVERRIDE=""
 REALITY_TARGET_MODE=$(wizard_shell_quote_value "$W_REALITY_TARGET_MODE")
 REALITY_TARGET=$(wizard_shell_quote_value "$W_REALITY_TARGET")
-REALITY_CANDIDATES="dl.google.com,www.apple.com,www.google.com,github.io"
 ENABLE_SUBSCRIPTION="auto"
 SUBSCRIPTION_EXPOSE_MODE="auto"
 SUBSCRIPTION_PORT=$(wizard_shell_quote_value "$W_SUBSCRIPTION_PORT")
@@ -362,8 +374,6 @@ XUI_SUB_URI_PATH=$(wizard_shell_quote_value "$W_SUB_PATH")
 ENABLE_DOCKER=$(wizard_shell_quote_value "$W_ENABLE_DOCKER")
 DOCKER_INSTALL_SOURCE=$(wizard_shell_quote_value "$W_DOCKER_INSTALL_SOURCE")
 ENABLE_CF_WS=$(wizard_shell_quote_value "$W_ENABLE_CF_WS")
-ENABLE_CF_PREFERRED="false"
-ENABLE_CLOUDFLARESUB="false"
 EOF2
   chmod 600 "$dst"
 }
@@ -438,8 +448,8 @@ wizard_collect() {
   [[ -t 0 ]] || die "交互向导需要 TTY。"
   if ! command_exists curl; then
     wait_apt_lock 300
-    apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl ca-certificates
+    apt_get_with_lock_retry update -qq
+    DEBIAN_FRONTEND=noninteractive apt_get_with_lock_retry install -y -qq curl ca-certificates
   fi
   wizard_banner
   echo
@@ -511,11 +521,11 @@ wizard_collect() {
   echo
   echo "检测到公网 IPv4：$W_SERVER_IP"
 
-  W_PROVIDER="$(wizard_prompt_default "VPS 服务商（用于名称/报告，例如 racknerd、vmiss）" "vps")"
-  W_SERVER_NAME="$(wizard_prompt_default "这台 VPS 的名称（同时建议作为 Netcatty Identity 名称）" "${W_PROVIDER}-${W_SERVER_IP}")"
+  W_PROVIDER="$(wizard_prompt_default "VPS 服务商（用于名称/报告，例如 racknerd、vmiss）" "${PROVIDER:-vps}")"
+  W_SERVER_NAME="$(wizard_prompt_default "这台 VPS 的名称（同时建议作为 Netcatty Identity 名称）" "${SERVER_NAME:-${W_PROVIDER}-${W_SERVER_IP}}")"
   current_port="$(wizard_detect_ssh_port)"
   if [[ "$custom" == true && "$W_CUSTOM_ADVANCED" == true ]]; then
-    W_SSH_PORT="$(wizard_prompt_default "SSH 端口" "$current_port")"
+    W_SSH_PORT="$(wizard_prompt_port "SSH 端口" "$current_port")"
   else
     W_SSH_PORT="$current_port"
     echo "SSH 端口：$W_SSH_PORT（沿用当前连接）"
@@ -528,10 +538,10 @@ wizard_collect() {
   if [[ "$W_PROFILE" == "nginx-reality" || "$W_PROFILE" == "lucky-reality" || "$W_PROFILE" == "lucky-web" ]]; then
     echo
     while [[ -z "$W_ROOT_DOMAIN" ]]; do
-      W_ROOT_DOMAIN="$(wizard_prompt_default "Cloudflare 根域名（例如 example.com）" "")"
+      W_ROOT_DOMAIN="$(wizard_prompt_default "Cloudflare 根域名（例如 example.com）" "${ROOT_DOMAIN:-}")"
       [[ "$W_ROOT_DOMAIN" != *://* && "$W_ROOT_DOMAIN" != */* && "$W_ROOT_DOMAIN" == *.* ]] || { echo "请只填写根域名，不要带 https:// 或路径。"; W_ROOT_DOMAIN=""; }
     done
-    W_LE_EMAIL="$(wizard_prompt_default "Let's Encrypt 邮箱（可留空）" "")"
+    W_LE_EMAIL="$(wizard_prompt_default "Let's Encrypt 邮箱（可留空）" "${LE_EMAIL:-}")"
   fi
 
   W_REALITY_TARGET_MODE="auto"; W_REALITY_TARGET=""
@@ -544,15 +554,15 @@ wizard_collect() {
     fi
   fi
 
-  W_PANEL_PATH="/zhg/"
-  W_SUB_PATH="/zhg/"
-  W_SUBSCRIPTION_PORT="2096"
+  W_PANEL_PATH="${XUI_WEB_BASE_PATH:-${XUI_PANEL_URI_PATH:-/zhg/}}"
+  W_SUB_PATH="${SUBSCRIPTION_PATH:-${XUI_SUB_URI_PATH:-/zhg/}}"
+  W_SUBSCRIPTION_PORT="${SUBSCRIPTION_PORT_SELECTED:-${SUBSCRIPTION_PORT:-2096}}"
   if [[ "$custom" == true && "$W_CUSTOM_ADVANCED" == true && "$W_PROFILE" != "base-only" && "$W_PROFILE" != "lucky-web" ]]; then
     W_PANEL_PATH="$(normalize_path "$(wizard_prompt_default "3x-ui 面板 URI Path" "/zhg/")")"
     local sub_input
     sub_input="$(wizard_prompt_default "订阅 URI Path" "/zhg/")"
     W_SUB_PATH="$(normalize_path "$sub_input")"
-    W_SUBSCRIPTION_PORT="$(wizard_prompt_default "3x-ui Subscription 内部/直连端口" "2096")"
+    W_SUBSCRIPTION_PORT="$(wizard_prompt_port "3x-ui Subscription 内部/直连端口" "$W_SUBSCRIPTION_PORT")"
     [[ "$W_SUBSCRIPTION_PORT" =~ ^[0-9]+$ ]] && ((W_SUBSCRIPTION_PORT>=1 && W_SUBSCRIPTION_PORT<=65535)) || die "订阅端口无效。"
   fi
   echo
@@ -614,53 +624,59 @@ wizard_collect() {
 }
 
 wizard_run() {
-  local cfg="${1:-$PERSIST_DIR/config.env}" pending backup="" rc=0 rollback_rc=0 previous_profile=""
+  local cfg="${1:-$PERSIST_DIR/config.env}" pending rc=0 previous_profile=""
   ensure_dir "$(dirname "$cfg")"
   state_load
   previous_profile="${DEPLOYED_PROFILE:-}"
   if [[ ! -f "$cfg" && -z "$previous_profile" ]]; then
     local first_run_rc=0
-    wizard_offer_first_install_dd || first_run_rc=$?
-    (( first_run_rc == 42 )) && return 42
+    "$ROOT_DIR/vps-init" first-install-dd || first_run_rc=$?
+    (( first_run_rc == 42 || first_run_rc == 10 )) && return 0
     (( first_run_rc == 0 )) || return "$first_run_rc"
   fi
-  if [[ -f "$cfg" && -n "$previous_profile" ]]; then
-    backup="$(mktemp "$(dirname "$cfg")/.config.env.rollback.XXXXXX")"
-    cp -a "$cfg" "$backup"
-    chmod 600 "$backup"
-  fi
-
-  wizard_collect || { [[ -n "$backup" ]] && rm -f "$backup"; return $?; }
-
-  # Keep the last verified config intact until the candidate deployment passes
-  # verification. A failed Profile migration must not leave config.env pointing
-  # at a topology that DEPLOYED_PROFILE never accepted.
   pending="$(mktemp "$(dirname "$cfg")/.config.env.pending.XXXXXX")"
-  wizard_write_config "$pending"
+  VPSINIT_EXISTING_CONFIG="$cfg" "$ROOT_DIR/vps-init" collect-config "$pending" || rc=$?
+  if (( rc != 0 )); then
+    rm -f "$pending"
+    [[ "$rc" != 10 && "$rc" != 12 ]] || return 0
+    return "$rc"
+  fi
   log_ok "候选配置已生成；验收通过后才会提交到：$cfg"
-
-  VPSINIT_ALLOW_PROFILE_SWITCH="${W_ALLOW_PROFILE_SWITCH:-0}" \
-  VPSINIT_XUI_USERNAME_INPUT="${W_XUI_USERNAME_INPUT:-}" \
-  VPSINIT_XUI_PASSWORD_INPUT="${W_XUI_PASSWORD_INPUT:-}" \
-  VPSINIT_LUCKY_USERNAME_INPUT="${W_LUCKY_USERNAME_INPUT:-}" \
-  VPSINIT_LUCKY_PASSWORD_INPUT="${W_LUCKY_PASSWORD_INPUT:-}" \
-    "$ROOT_DIR/vps-init" apply "$pending" || rc=$?
+  "$ROOT_DIR/vps-init" apply "$pending" || rc=$?
   if (( rc == 0 )); then
-    install -m 600 "$pending" "$cfg"
     log_ok "部署与验收通过，配置已提交：$cfg"
   else
     log_warn "部署未通过，原有已验证配置未被候选配置覆盖。"
-    if [[ -n "$backup" && -n "$previous_profile" ]]; then
-      log_warn "尝试自动恢复上一个已验证 Profile=${previous_profile} 的服务拓扑。"
-      VPSINIT_ALLOW_PROFILE_SWITCH=1 "$ROOT_DIR/vps-init" apply "$backup" || rollback_rc=$?
-      if (( rollback_rc == 0 )); then
-        log_ok "已恢复上一个已验证 Profile=${previous_profile}。"
-      else
-        log_warn "自动回滚未完全成功（exit=${rollback_rc}）；保留原配置，请运行 vps-init apply 重新收敛。"
-      fi
-    fi
+    log_warn "已开始的部署可用 vps-init resume 继续；恢复已验证方案用 vps-init apply。"
   fi
   rm -f "$pending"
-  [[ -n "$backup" ]] && rm -f "$backup"
   return "$rc"
+}
+
+wizard_collect_config() {
+  local pending="$1"
+  if [[ -f "${VPSINIT_EXISTING_CONFIG:-}" ]]; then
+    load_config "$VPSINIT_EXISTING_CONFIG"
+  fi
+  wizard_collect
+  wizard_write_config "$pending"
+  if [[ -f "${VPSINIT_EXISTING_CONFIG:-}" ]]; then
+    # Keep advanced/unrecognized settings, replacing only fields owned by the
+    # wizard. A shell config stays trusted root-owned executable input.
+    local merged
+    merged="$(mktemp "${pending}.merge.XXXXXX")"
+    awk -F= 'NR==FNR {if ($1 ~ /^[A-Z_][A-Z0-9_]*$/) owned[$1]=1; next}
+      !($1 in owned) && $1 !~ /^VPSINIT_(ALLOW_PROFILE_SWITCH|XUI_USERNAME_INPUT|XUI_PASSWORD_INPUT|LUCKY_USERNAME_INPUT|LUCKY_PASSWORD_INPUT)$/ {print}' "$pending" "$VPSINIT_EXISTING_CONFIG" > "$merged"
+    cat "$pending" >> "$merged"
+    atomic_config_copy "$merged" "$pending"
+    rm -f "$merged"
+  fi
+  # These values live only in the root-only candidate, never in logs.
+  local key
+  for key in ALLOW_PROFILE_SWITCH XUI_USERNAME_INPUT XUI_PASSWORD_INPUT LUCKY_USERNAME_INPUT LUCKY_PASSWORD_INPUT; do
+    local var="W_$key"
+    printf 'VPSINIT_%s=%q\n' "$key" "${!var:-}" >> "$pending"
+  done
+  load_config "$pending"
+  validate_config
 }
