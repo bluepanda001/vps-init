@@ -1,6 +1,7 @@
 """Behavioral tests: no real package, service, firewall or disk operations."""
 import os
 import pty
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -205,8 +206,38 @@ wizard_banner() {{ echo MENU_READY; }}
 clear() {{ :; }}
 menu
 '''
-            out = self.tty_shell(script, '3\n\n8\n0\n')
+            out = self.tty_shell(script, '5\n\n10\n0\n')
             self.assertEqual(out.count('MENU_READY'), 3)
+
+    def test_menu_sequential_numbers_and_dispatch(self):
+        commands = ['apply', 'resume', 'wizard', 'verify', 'info', 'status',
+                    'gateway', 'secrets', 'passwd', 'edit-config',
+                    'network-tools', 'update', 'logs', 'upgrade-system', 'reinstall']
+        with tempfile.TemporaryDirectory() as td:
+            entry = Path(td) / 'vps-init'
+            entry.write_text('#!/usr/bin/env bash\nprintf "CALLED:%s\\n" "$1"\n')
+            entry.chmod(0o700)
+            (Path(td) / 'config.env').touch()
+            script = f'''set -Eeuo pipefail
+source lib/app/menu.sh
+ROOT_DIR='{td}'
+DEFAULT_CFG='{td}/config.env'
+SECRETS_FILE="$DEFAULT_CFG"
+require_root() {{ :; }}
+state_load() {{ :; }}
+wizard_banner() {{ echo MENU_READY; }}
+wizard_yesno() {{ return 0; }}
+clear() {{ :; }}
+menu
+'''
+            out = self.tty_shell(script, ''.join(f'{n}\n\n' for n in range(1, 16)) + '0\n')
+            first_menu = out.split('MENU_READY')[1]
+            self.assertEqual([int(n) for n in re.findall(r'^\s*(\d+)\.', first_menu, re.M)],
+                             list(range(1, 16)) + [0])
+            self.assertEqual(re.findall(r'^CALLED:(.*)$', out, re.M), commands)
+            out = self.tty_shell(script, 'invalid\n\n16\n\n0\n')
+            self.assertEqual(out.count('输入无效。'), 2)
+            self.assertNotIn('CALLED:', out)
 
     def test_dd_download_failure_never_reboots(self):
         script = '''set -Eeuo pipefail
