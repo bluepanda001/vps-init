@@ -179,7 +179,7 @@ backup_root="/var/backups/vps-init-bootstrap"
 backup_dir="${backup_root}/$(date -u '+%Y%m%dT%H%M%SZ')"
 rm -rf "$stage"
 mkdir -p "$stage"
-tar -C "$src" --exclude='.git' --exclude='config.env' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' -cf - . |   tar -C "$stage" -xf -
+tar -C "$src" --exclude='.git' --exclude='config.env' --exclude='pending.env' --exclude='.config.env.*' --exclude='*.env.tmp.*' --exclude='*.env.clean.*' --exclude='*.env.edit.*' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' -cf - . |   tar -C "$stage" -xf -
 chmod +x "$stage/vps-init" "$stage/install.sh" 2>/dev/null || true
 find "$stage" -type f -name '*.sh' -exec chmod 755 {} + 2>/dev/null || true
 

@@ -493,7 +493,7 @@ SHA256SUMS
 - `ENABLE_CF_WS` 已正式支持域名 Profile；`ENABLE_CF_PREFERRED`、`ENABLE_CLOUDFLARESUB` 仍为预留扩展并保持 fail-closed。
 - V1.3.0 不内置 NPM 或应用安装模板；Web/Docker 应用由用户自行安装，`lucky-reality` 作为推荐的图形化 Web Gateway。
 - 这是个人 VPS 实用安全基线，不是 CIS/企业合规基线。
-# 重构分支：部署恢复与维护
+## v1.4.0：部署恢复与维护
 
 主菜单按安装部署、系统服务、配置凭据、网络、更新维护、系统重装分组，保留原有快捷编号。
 `vps-init resume` 使用 `/opt/vps-init/pending.env` 继续失败或中断的候选部署；

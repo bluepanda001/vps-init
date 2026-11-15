@@ -1,4 +1,9 @@
 config.env
+pending.env
+.config.env.*
+*.env.tmp.*
+*.env.clean.*
+*.env.edit.*
 *.local.env
 .env
 .env.*
