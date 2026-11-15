@@ -441,7 +441,7 @@ if grep -q 'rm -f "$token_file"' modules/cloudflare/apply.sh; then
 fi
 grep -q 'cert_has_ip_san "$cert" "$SERVER_IP"' modules/subscription/apply.sh
 grep -q 'cert_key_match "$cert" "$key"' modules/subscription/apply.sh
-[[ "$(tr -d "[:space:]" < VERSION)" == "1.4.2" ]]
+[[ "$(tr -d "[:space:]" < VERSION)" == "1.5.0" ]]
 grep -q 'permitrootlogin_matches_expected' core/ssh.sh
 grep -q 'systemctl reset-failed ssh.service ssh.socket' core/ssh.sh
 grep -q 'ssh_rollback_unit_name' core/ssh.sh
