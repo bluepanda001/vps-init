@@ -401,23 +401,24 @@ vps-init
   1. 应用当前配置 / 首次部署（也用于修复）
   2. 继续上次失败或中断的部署
   3. 重新选择安装方案
+  4. 组件管理（增装 / 修复 / 恢复）
 【系统与服务】
-  4. 运行核心验收
-  5. 查看部署信息
-  6. 查看当前状态
-  7. Web Gateway / Lucky
+  5. 运行核心验收
+  6. 查看部署信息
+  7. 查看当前状态
+  8. Web Gateway / Lucky
 【配置与凭据】
-  8. 查看敏感凭据
-  9. 修改管理账号 / 密码
- 10. 编辑并校验配置（保存后按 1 应用）
+  9. 查看敏感凭据
+ 10. 修改管理账号 / 密码
+ 11. 编辑并校验配置（保存后按 1 应用）
 【网络工具】
- 11. TCPFit 调优 / TcpQuality 测速
+ 12. TCPFit 调优 / TcpQuality 测速
 【更新与维护】
- 12. 更新 VPS Init
- 13. 查看服务日志
- 14. 系统完整升级（apt upgrade）
+ 13. 更新 VPS Init
+ 14. 查看服务日志
+ 15. 系统完整升级（apt upgrade）
 【系统重装】
- 15. 一键 DD（清空系统盘，需输入 DD 确认）
+ 16. 一键 DD（清空系统盘，需输入 DD 确认）
   0. 退出
 ```
 
@@ -505,7 +506,7 @@ SHA256SUMS
 - 这是个人 VPS 实用安全基线，不是 CIS/企业合规基线。
 ## v1.4.0：部署恢复与维护
 
-主菜单按安装部署、系统服务、配置凭据、网络、更新维护、系统重装分组，按显示顺序连续编号 1–15，0 退出；每行一个选项。
+主菜单按安装部署、系统服务、配置凭据、网络、更新维护、系统重装分组，按显示顺序连续编号 1–16，0 退出；每行一个选项。
 `vps-init resume` 使用 `/opt/vps-init/pending.env` 继续失败或中断的候选部署；
 `vps-init apply` 使用已保存配置重新检查并修复。恢复会重复安全检查，复用已安装组件及原有节点身份。
 最后执行阶段保存在 `/var/lib/vps-init/deployment.env`，不含密码或 Token。
@@ -516,3 +517,30 @@ SHA256SUMS
 
 结构设计与风险见 [架构审查](docs/architecture-review.md)，验证记录见 [验收报告](docs/refactor-acceptance.md)。
 
+
+
+## 部署后的组件管理
+
+首次安装仍使用五种推荐方案；完成部署后，在主菜单选择 **4. 组件管理**，可以增装或修复 Docker、Reality/3x-ui、Lucky、Nginx SNI 网关、Clash/Mihomo 订阅和 Cloudflare CDN WS。菜单只列出当前可用的操作：例如 base-only 可先增装 Docker、Reality 或 Lucky；CDN WS 需要已经具备域名网关和订阅。
+
+```bash
+vps-init components                     # 交互菜单
+vps-init components status              # 配置状态与服务运行状态
+vps-init components plan lucky          # 只预览，不执行
+vps-init components add docker          # 选择官方/阿里云源，确认后增装
+vps-init components repair lucky        # 修复已启用组件
+vps-init components resume              # 使用保留的候选重试
+vps-init components resume --source=aliyun  # Docker 失败后切换国内软件包源
+```
+
+自动化可以使用 `--yes`；涉及 Profile 网络布局改变还需要 `--allow-topology`。缺少域名时非交互操作会停止，不猜测域名。`--source=official` 和 `--source=aliyun` 只选择 Docker CE 软件包源，不改变 Docker Hub 镜像配置。
+
+组件执行只运行计划中的模块，不重新执行 SSH 加固、Swap 或系统升级。`PROFILE` 继续表示当前有效网络布局；`INITIAL_PROFILE` 状态记录首次方案。旧配置、未知配置字段和已有节点身份继续复用；Reality 从独占 443 扩展到网关时，通过 `REALITY_PUBLIC_ADDRESS` 保留已发布的 IP 节点地址，并保留原有 IP 订阅地址。
+
+网关变化可能短暂中断连接，交互模式需要输入 `CHANGE` 再确认。程序检查外部服务和端口冲突，不提供自动接管、卸载或任意网关替换。
+
+组件失败候选、步骤进度和备份位于 `/var/lib/vps-init/component-operation/`，成功后归档至 `component-history/`；目录仅 root 可访问。恢复重跑同一计划的幂等步骤，复用已有安装与节点，不要求重新填表。完整部署与组件操作共用锁，存在未完成组件操作时不能开始完整部署或编辑正式配置。
+
+备份中的 `services.tar.gz` 是相关服务文件快照，3x-ui 数据库单独使用 SQLite backup API 保存为 `backup/x-ui.db`，包含已提交 WAL 数据。**备份用于人工恢复，不等于自动事务回滚**：软件包安装、DNS 和签发的证书不自动撤销；恢复数据库前需停止服务并处理旧 WAL/SHM 文件。外部手工编辑正式配置会使恢复停止，须先人工核对候选和原配置。
+
+本功能的自动测试隔离模拟系统操作；真实 VPS 的 DNS、证书签发、SNI 切换、旧客户端继续连接和冷启动仍需验收。暂不包含第三方应用服务。
