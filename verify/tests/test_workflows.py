@@ -76,6 +76,7 @@ grep -qx VPSINIT_APT_LOCK_TIMEOUT=90 "$PERSIST_DIR/config.env"
     def test_base_only_does_not_stop_user_services(self):
         self.run_sh('''PREVIOUS_DEPLOYED_PROFILE=base-only
 PROFILE=base-only
+managed_service_owned() { return 1; }
 systemctl() { exit 99; }
 prepare_profile_transition
 ''')

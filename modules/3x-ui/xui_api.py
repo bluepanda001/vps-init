@@ -147,12 +147,8 @@ def list_inbounds(base: str, token: str) -> list[dict[str, Any]]:
     return []
 
 
-def select_target(base: str, token: str, mode: str, manual: str, candidates: str) -> tuple[str,str,dict[str,Any] | None]:
-    if mode == "manual":
-        target,host=normalize_target(manual)
-        if target_is_high_risk(target):
-            raise RuntimeError(f"refusing high-risk Reality target {host}: shared Cloudflare targets may relay failed-auth traffic")
-        return target,host,None
+def scan_safe_targets(base: str, token: str, candidates: str) -> list[dict[str,Any]]:
+    # 3x-ui may return its built-in list regardless of the candidates hint.
     obj=get_obj(base,token,"POST","panel/api/server/scanRealityTargets",{"targets":candidates})
     rows=obj if isinstance(obj,list) else []
     feasible=[
@@ -160,11 +156,23 @@ def select_target(base: str, token: str, mode: str, manual: str, candidates: str
         if isinstance(x,dict)
         and x.get("feasible") is True
         and not x.get("privateTarget")
-        and not target_is_high_risk(str(x.get("target") or x.get("host") or ""))
+        and bool(x.get("target"))
+        and bool(x.get("host"))
+        and not target_is_high_risk(str(x["target"]))
     ]
     if not feasible:
         summary=[{"target":x.get("target"),"feasible":x.get("feasible"),"reason":x.get("reason")} for x in rows if isinstance(x,dict)]
         raise RuntimeError("no safe feasible Reality target: "+json.dumps(summary,ensure_ascii=False))
+    return feasible
+
+
+def select_target(base: str, token: str, mode: str, manual: str, candidates: str) -> tuple[str,str,dict[str,Any] | None]:
+    if mode == "manual":
+        target,host=normalize_target(manual)
+        if target_is_high_risk(target):
+            raise RuntimeError(f"refusing high-risk Reality target {host}: shared Cloudflare targets may relay failed-auth traffic")
+        return target,host,None
+    feasible=scan_safe_targets(base,token,candidates)
     best=feasible[0]
     target=str(best.get("target") or "").strip()
     host=str(best.get("host") or "").strip()
@@ -423,7 +431,7 @@ def main() -> int:
     try:
       if args.cmd=="patch-settings": patch_settings(args.base,args.token,json.loads(args.json)); out={"ok":True}
       elif args.cmd=="set-freedom-strategy": out=set_freedom_strategy(args.base,args.token,args.strategy)
-      elif args.cmd=="scan": out=get_obj(args.base,args.token,"POST","panel/api/server/scanRealityTargets",{"targets":args.candidates})
+      elif args.cmd=="scan": out=scan_safe_targets(args.base,args.token,args.candidates)
       elif args.cmd=="create-reality": out=create_reality(args)
       elif args.cmd=="create-ws": out=create_ws(args)
       elif args.cmd=="list-inbounds": out=list_inbounds(args.base,args.token)

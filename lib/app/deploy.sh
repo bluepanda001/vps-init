@@ -14,14 +14,18 @@ load_runtime_config() {
   fi
 }
 
-stop_managed_service() {
+managed_service_owned() {
   case "$1" in
-    lucky) [[ -n "${LUCKY_SAFE_URL:-}" ]] || return 0 ;;
-    x-ui) [[ -n "${XUI_PANEL_PORT:-}" ]] || return 0 ;;
-    nginx) [[ -f /etc/nginx/stream-conf.d/vps-init.conf ]] || return 0 ;;
-    vps-init-landing) [[ -f /etc/systemd/system/vps-init-landing.service ]] || return 0 ;;
+    lucky) [[ -n "${LUCKY_SAFE_URL:-}" ]] ;;
+    x-ui) [[ -n "${XUI_PANEL_PORT:-}" ]] ;;
+    nginx) [[ -f /etc/nginx/stream-conf.d/vps-init.conf ]] ;;
+    vps-init-landing) [[ -f /etc/systemd/system/vps-init-landing.service ]] ;;
     *) die "未知管理服务。" ;;
   esac
+}
+
+stop_managed_service() {
+  managed_service_owned "$1" || return 0
   systemctl disable --now "$1"
 }
 
