@@ -529,6 +529,7 @@ vps-init components status              # 配置状态与服务运行状态
 vps-init components plan lucky          # 只预览，不执行
 vps-init components add docker          # 选择官方/阿里云源，确认后增装
 vps-init components repair lucky        # 修复已启用组件
+vps-init components cancel              # 归档尚未开始修改系统的计划
 vps-init components resume              # 使用保留的候选重试
 vps-init components resume --source=aliyun  # Docker 失败后切换国内软件包源
 ```
@@ -544,3 +545,5 @@ vps-init components resume --source=aliyun  # Docker 失败后切换国内软件
 备份中的 `services.tar.gz` 是相关服务文件快照，3x-ui 数据库单独使用 SQLite backup API 保存为 `backup/x-ui.db`，包含已提交 WAL 数据。**备份用于人工恢复，不等于自动事务回滚**：软件包安装、DNS 和签发的证书不自动撤销；恢复数据库前需停止服务并处理旧 WAL/SHM 文件。外部手工编辑正式配置会使恢复停止，须先人工核对候选和原配置。
 
 本功能的自动测试隔离模拟系统操作；真实 VPS 的 DNS、证书签发、SNI 切换、旧客户端继续连接和冷启动仍需验收。暂不包含第三方应用服务。
+
+停用不等于卸载：组件管理会使用项目保存的 3x-ui/Lucky 身份和 Nginx 管理标记识别以前安装的组件。仅有软件文件、没有项目归属记录的安装仍会被拒绝接管。尚未产生 `mutations-started` 的失败计划可用 `components cancel` 归档；已开始执行的计划只能恢复，取消不是回滚。Docker repair 会执行软件包安装，可能升级已安装的 Docker/Compose。

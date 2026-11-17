@@ -47,7 +47,7 @@ VPS Init ${VPSINIT_VERSION}
   vps-init resume             # 恢复上次失败或中断的部署
   vps-init components         # 组件状态、增装、修复和恢复
   vps-init components plan|add|repair docker|reality|lucky|nginx|subscription|cf-ws
-  vps-init components status|resume
+  vps-init components status|resume|cancel
   vps-init edit-config        # 校验后保存配置，不自动部署
   vps-init verify [config.env]
   vps-init preflight [config.env]
