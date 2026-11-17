@@ -1,6 +1,6 @@
 # Release Notes
 
-## Unreleased
+## v1.5.1
 
 - 修复停用后的项目 3x-ui/Lucky/Nginx 被误判为外部安装，允许根据历史归属记录重新启用。
 - 完整 apply 迁移到 lucky-reality 时，先释放项目 Lucky 占用的 443，再执行预检和后续配置。
