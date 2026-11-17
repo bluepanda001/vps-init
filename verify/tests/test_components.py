@@ -428,5 +428,88 @@ wait "$child" || rc=$?
 ''')
 
 
+    def test_previously_managed_xui_can_be_reenabled(self):
+        self.run_sh(self.execution_fixture() + r'''
+PROFILE=lucky-web; ROOT_DOMAIN=example.com
+XUI_PANEL_PORT=12345; XUI_VERSION=3.8.5; XUI_API_TOKEN=fixture
+COMPONENT_OP="$STATE_DIR/component-operation"
+COMPONENT_STEPS=(module_xui)
+component_present() { return 0; }
+component_check_ownership
+''')
+
+    def test_partial_xui_marker_does_not_authorize_adoption(self):
+        self.run_sh(self.execution_fixture() + r'''
+PROFILE=lucky-web; XUI_PANEL_PORT=12345
+COMPONENT_OP="$STATE_DIR/component-operation"; COMPONENT_STEPS=(module_xui)
+component_present() { return 0; }
+component_check_ownership
+''', 1)
+
+    def test_apply_releases_managed_lucky_443(self):
+        self.run_sh(self.execution_fixture() + r'''
+source lib/app/deploy.sh
+PROFILE=lucky-reality; PREVIOUS_DEPLOYED_PROFILE=lucky-web
+VPSINIT_ALLOW_PROFILE_SWITCH=1; LUCKY_SAFE_URL=fixture
+systemctl() { if [[ "$1" == stop ]]; then echo "$2" >> "$TD/stopped"; else return 1; fi; }
+ss() { echo 'LISTEN users:(("lucky",pid=123,fd=1))'; }
+prepare_profile_transition
+grep -qx lucky "$TD/stopped"
+''')
+
+    def test_cancel_archives_unstarted_operation(self):
+        self.run_sh(self.execution_fixture() + r'''
+mkdir "$STATE_DIR/component-operation"
+printf saved > "$STATE_DIR/component-operation/config.env"
+component_command cancel --yes
+[[ ! -d "$STATE_DIR/component-operation" ]]
+[[ $(find "$STATE_DIR/component-history" -name config.env | wc -l) -eq 1 ]]
+''')
+
+    def test_cancel_refuses_started_operation(self):
+        self.run_sh(self.execution_fixture() + r'''
+mkdir "$STATE_DIR/component-operation"
+touch "$STATE_DIR/component-operation/mutations-started"
+component_command cancel --yes
+''', 1)
+
+
+    def test_reenable_existing_xui_failure_then_resume(self):
+        self.run_sh(self.execution_fixture() + r'''
+printf 'PROFILE=lucky-web\nROOT_DOMAIN=example.com\n' > "$DEFAULT_CFG"
+state_set DEPLOYED_PROFILE lucky-web
+state_set XUI_PANEL_PORT 12345
+state_set XUI_VERSION 3.8.5
+state_set XUI_API_TOKEN fixture
+COMPONENT_SOURCE=""
+component_present() { [[ "$1" == reality ]]; }
+for step in module_cloudflare module_certbot_domain resolve_runtime_ports component_firewall module_subscription module_reality module_lucky module_nginx; do
+ eval "$step() { :; }"
+done
+module_xui() { exit 23; }
+(component_change add reality) &
+child=$!; rc=0
+wait "$child" || rc=$?
+[[ $rc == 23 ]]
+source "$DEFAULT_CFG"
+[[ "$PROFILE" == lucky-web ]]
+module_xui() { :; }
+component_resume
+source "$DEFAULT_CFG"
+[[ "$PROFILE" == lucky-reality && "$REALITY_UUID" == stable-uuid ]]
+''')
+
+    def test_apply_does_not_stop_unmanaged_lucky(self):
+        self.run_sh(self.execution_fixture() + r'''
+source lib/app/deploy.sh
+PROFILE=lucky-reality; PREVIOUS_DEPLOYED_PROFILE=lucky-web
+VPSINIT_ALLOW_PROFILE_SWITCH=1
+unset LUCKY_SAFE_URL
+systemctl() { if [[ "$1" == stop ]]; then exit 99; else return 1; fi; }
+ss() { echo 'LISTEN users:(("lucky",pid=123,fd=1))'; }
+prepare_profile_transition
+''')
+
+
 if __name__ == '__main__':
     unittest.main()

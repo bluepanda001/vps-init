@@ -97,3 +97,13 @@ component_plan() {
     COMPONENT_STEPS+=(optional_cf_ws)
   fi
 }
+
+# Persisted project identity survives disabling a component via Profile changes.
+component_previously_managed() {
+  case "$1" in
+    reality) [[ -n "${XUI_PANEL_PORT:-}" && -n "${XUI_VERSION:-}" && -n "${XUI_API_TOKEN:-}" ]] ;;
+    lucky) [[ -n "${LUCKY_SAFE_URL:-}" && -n "${LUCKY_USERNAME:-}" && -n "${LUCKY_PASSWORD:-}" ]] ;;
+    nginx) [[ -f /etc/nginx/stream-conf.d/vps-init.conf ]] && grep -q '^# Managed by vps-init.' /etc/nginx/stream-conf.d/vps-init.conf ;;
+    *) return 1 ;;
+  esac
+}

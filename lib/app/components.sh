@@ -124,7 +124,7 @@ component_check_ownership() {
   local step id
   for step in "${COMPONENT_STEPS[@]}"; do
     case "$step" in module_xui) id=reality ;; module_lucky) id=lucky ;; module_nginx) id=nginx ;; optional_docker) id=docker ;; *) continue ;; esac
-    if ! component_enabled "$id" && component_present "$id"; then
+    if ! component_enabled "$id" && ! component_previously_managed "$id" && component_present "$id"; then
       [[ -f "$COMPONENT_OP/started-$step" ]] || die "检测到非项目管理的 ${id}，拒绝自动接管；请先人工处理。"
     fi
   done
@@ -365,14 +365,31 @@ component_available() {
     printf '%s|%s\n' "$id" "$(component_label "$id")"
   done < <(component_ids)
 }
+component_cancel() {
+  component_lock
+  local pending="$STATE_DIR/component-operation" archive
+  [[ -d "$pending" ]] || die "没有待取消的组件操作。"
+  [[ ! -f "$pending/mutations-started" ]] || die "操作已经开始修改系统，不能取消记录；请运行 components resume。"
+  if [[ "$COMPONENT_YES" != true ]]; then
+    wizard_yesno '归档未开始执行的计划并解除阻塞？' n || return 10
+  fi
+  mkdir -p "$STATE_DIR/component-history"
+  chmod 700 "$STATE_DIR/component-history"
+  archive="$(mktemp -d "$STATE_DIR/component-history/cancelled.XXXXXX")"
+  rmdir "$archive"
+  mv "$pending" "$archive"
+  log_ok "未执行的计划已取消，记录保留在：$archive"
+}
 components_menu() {
   [[ -t 0 ]] || die "组件菜单需要 TTY；也可使用 components status / plan / add / repair / resume。"
   local action id choice rc rows label
   while true; do
     "$ROOT_DIR/vps-init" components status || true
-    action="$(wizard_select '组件管理' '增装组件' '修复已启用组件' '继续失败的组件操作')" || return 0
+    action="$(wizard_select '组件管理' '增装组件' '修复已启用组件' '继续失败的组件操作' '取消尚未执行的组件计划')" || return 0
     if [[ "$action" == 3 ]]; then
       "$ROOT_DIR/vps-init" components resume || true
+    elif [[ "$action" == 4 ]]; then
+      "$ROOT_DIR/vps-init" components cancel || true
     else
       local -a ids=() labels=()
       if [[ "$action" == 1 ]]; then action=add; else action=repair; fi
@@ -394,8 +411,8 @@ component_command() {
     menu) components_menu; return ;;
     status) component_status; return ;;
     plan|add|repair) [[ -n "$id" ]] || die "请指定组件：docker/reality/lucky/nginx/subscription/cf-ws"; shift 2 ;;
-    resume) shift ;;
-    *) die "组件命令：components [status|plan|add|repair|resume] [组件]" ;;
+    resume|cancel) shift ;;
+    *) die "组件命令：components [status|plan|add|repair|resume|cancel] [组件]" ;;
   esac
   while (( $# )); do
     case "$1" in
@@ -411,6 +428,7 @@ component_command() {
     COMPONENT_ACTION=add; COMPONENT_ID="$id"; COMPONENT_FROM_PROFILE="$PROFILE"
     component_plan add "$id"
     component_summary
+  elif [[ "$action" == cancel ]]; then component_cancel
   elif [[ "$action" == resume ]]; then component_resume
   else component_change "$action" "$id"; fi
 }

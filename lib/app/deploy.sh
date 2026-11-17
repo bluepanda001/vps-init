@@ -64,6 +64,10 @@ prepare_profile_transition() {
       stop_managed_service vps-init-landing
       ;;
     lucky-reality)
+      if managed_service_owned lucky && ss -H -ltnp 'sport = :443' 2>/dev/null | grep -q '"lucky"'; then
+        log_warn "项目 Lucky 仍占用 443；先停止，后续按 8443 后端配置并重新启动。"
+        systemctl stop lucky
+      fi
       if ! systemctl is-active --quiet nginx 2>/dev/null &&
          systemctl is-active --quiet x-ui 2>/dev/null &&
          ss -H -ltnp 'sport = :443' 2>/dev/null | grep -qi xray; then
